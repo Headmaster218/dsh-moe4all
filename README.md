@@ -1,8 +1,10 @@
-# DeepSeek Harness
+# MoE4All Harness
 
 English | [中文](README.zh.md)
 
-DeepSeek Harness (`dsh`) is an open-source agent harness developed by [DeepSeek AI](https://deepseek.com).
+This is the MoE4All-maintained edition of DeepSeek Harness (`dsh`). It keeps the original MIT-licensed project and attribution while adding the engine integration and bundled plugin set used by the MoE4All distribution. See [UPSTREAM.md](UPSTREAM.md) for the exact source checkpoint and maintenance purpose.
+
+The upstream DeepSeek Harness is an open-source agent harness developed by [DeepSeek AI](https://deepseek.com).
 
 It uses an architecture where **everything is a plugin**, and is powered by [Cordis](https://github.com/cordiverse/cordis), whose design is described in [_A Programming Paradigm for Spatiotemporal Composability_](https://github.com/cordiverse/paper).
 

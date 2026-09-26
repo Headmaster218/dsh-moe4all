@@ -3,6 +3,15 @@
   "version": "0.1.1-rc.2",
   "license": "MIT",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Headmaster218/dsh-moe4all.git"
+  },
+  "moe4all": {
+    "upstream": "deepseek-ai/deepseek-harness@dsh-v0.1.1-rc.2",
+    "repository": "https://github.com/deepseek-ai/deepseek-harness",
+    "commit": "b150a551b8d465e31e418e1b2eaf5e79bbb7d28e"
+  },
   "type": "module",
   "packageManager": "pnpm@11.7.0",
   "engines": {
