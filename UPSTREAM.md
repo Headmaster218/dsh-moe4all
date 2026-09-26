@@ -8,4 +8,6 @@ This is an independent MoE4All-maintained repository, not a GitHub fork.
 - Imported artifact: exact tagged source snapshot
 - License: MIT; the original `LICENSE`, `THIRD_PARTY_NOTICES.md`, authorship, and upstream documentation are retained
 
+Upstream commit history is intentionally not imported: the first commit is the exact source checkpoint named above, and MoE4All changes start after it.
+
 The repository exists so MoE4All can maintain a tested harness, bundled plugin set, engine integration, and desktop distribution without replacing or silently updating a user's standard DSH installation. MoE4All changes are committed after the untouched upstream checkpoint.
