@@ -1,7 +1,7 @@
 {
-  "id": "/",
-  "name": "DeepSeek Harness",
-  "short_name": "DSH",
+  "id": "/moe4all-agent",
+  "name": "MoE4All Agent",
+  "short_name": "MoE4All",
   "start_url": "/",
   "scope": "/",
   "display": "fullscreen",

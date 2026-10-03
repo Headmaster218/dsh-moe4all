@@ -358,7 +358,9 @@ export class SystemPrompt extends Service {
       this.section({
         name: 'harness:identity',
         order: -100,
-        text: 'You are an AI agent powered by DeepSeek Harness.',
+        text: process.env.MOE4ALL_AGENT === '1'
+          ? 'You are an AI agent powered by MoE4All.'
+          : 'You are an AI agent powered by DeepSeek Harness.',
       })
     }
     this.section({

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import SystemPrompt, { AssembleContext, PromptAssembly, renderContextSnapshot, renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 
@@ -35,6 +35,17 @@ describe('SystemPrompt', () => {
       const ctx = new Context()
       await ctx.plugin(SystemPrompt)
       expect(renderPrompt(await ctx.systemPrompt.assemble())).toBe(IDENTITY)
+    })
+
+    it('uses the MoE4All identity only for the MoE4All launcher', async () => {
+      vi.stubEnv('MOE4ALL_AGENT', '1')
+      try {
+        const ctx = new Context()
+        await ctx.plugin(SystemPrompt)
+        expect(renderPrompt(await ctx.systemPrompt.assemble())).toBe('You are an AI agent powered by MoE4All.')
+      } finally {
+        vi.unstubAllEnvs()
+      }
     })
 
     it('can omit the harness identity for a deployment that owns the complete persona', async () => {

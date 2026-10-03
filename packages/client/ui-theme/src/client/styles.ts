@@ -4,6 +4,7 @@ import designPlatform from '../styles/design-platform.css?inline'
 import scrollbar from '../styles/scrollbar.css?inline'
 import gradientShadowText from '../styles/gradient-shadow-text.css?inline'
 import shiki from '../styles/shiki.css?inline'
+import moe4all from '../styles/moe4all.css?inline'
 
 const PLUGIN_ID = '@deepseek-ai/dsh-client-ui-theme'
 
@@ -13,6 +14,7 @@ const STYLES = [
   ['scrollbar.css', scrollbar],
   ['gradient-shadow-text.css', gradientShadowText],
   ['shiki.css', shiki],
+  ...(process.env.DSH_CLIENT_BUILD_PROFILE === 'moe4all' ? [['moe4all.css', moe4all] as const] : []),
 ] as const
 
 /**

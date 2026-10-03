@@ -118,7 +118,7 @@ export function HeroShell({ t, renderSlot, children }: HeroShellProps) {
   return (
     <div className={css.root}>
       <div className={css.stack}>
-        <div className={css.headline}>
+        <div className={css.headline} data-product={process.env.DSH_CLIENT_BUILD_PROFILE === 'moe4all' ? 'moe4all' : undefined}>
           {/* figma 34:10412: fish 34×25 leading the headline, gap 10. */}
           <span className={css.fishHitbox}>
             {renderSlot('conversation.hero.brand.mark', { size: 34, className: css.fish }, {
@@ -126,7 +126,8 @@ export function HeroShell({ t, renderSlot, children }: HeroShellProps) {
             })}
           </span>
           <span className={css.headlineText}>{t('hero.headline')}</span>
-          <span className={css.previewBadge}>{t('hero.preview')}</span>
+          {process.env.DSH_CLIENT_BUILD_PROFILE !== 'moe4all' &&
+            <span className={css.previewBadge}>{t('hero.preview')}</span>}
         </div>
         <div className={css.body}>
           {/* The resident composer (ConversationRoot's root-owned scrollport;
