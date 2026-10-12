@@ -139,6 +139,12 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'conversation.chat.turnTail': { kind: 'chain'; scope: 'session'; owner: TurnTailOwnerProps }
     /**
+     * Transient background activity shown at the live edge of the transcript,
+     * immediately after the turn-level model status. Feature plugins own both
+     * the activity lifecycle and its copy; an inactive entry renders nothing.
+     */
+    'conversation.chat.status': { kind: 'list'; scope: 'session'; owner: ChatStatusOwnerProps }
+    /**
      * Action strip attached to one finalized assistant message, rendered
      * inside that message's IconActions row. The chat entry owns the render
      * site and passes the addressed message identity; contributors add
@@ -784,10 +790,16 @@ export interface ChatViewInjected {
   fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined
 }
 
+/** Current-session facts supplied to transient chat status contributors. */
+export interface ChatStatusOwnerProps {
+  sessionId: SessionId
+  running: boolean
+}
+
 /** Full chat-view component props: runtime & its Tool/command/tail render shares & store & injected & locale seat. */
 export type ChatViewSlotProps =
   PropsRuntime<'conversation.view'>
-  & PropsRenderSlots<'conversation.chat.node' | 'conversation.message.images'>
+  & PropsRenderSlots<'conversation.chat.node' | 'conversation.chat.status' | 'conversation.message.images'>
   & PropsStore<ChatStore> & ChatViewInjected & PropsLocale<'conversation'>
 
 /** Full props of the attachment plugin's composer entry. */

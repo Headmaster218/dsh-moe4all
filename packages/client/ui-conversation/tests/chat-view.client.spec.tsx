@@ -971,13 +971,18 @@ describe('ChatView', () => {
       return opts?.fallback ?? null
     })
     render(<h.ChatView {...h.props} />)
-    expect(calls).toHaveLength(1)
-    expect(calls[0]).toMatchObject({
+    const nodeCalls = calls.filter(call => call.key === 'conversation.chat.node')
+    expect(nodeCalls).toHaveLength(1)
+    expect(calls).toContainEqual(expect.objectContaining({
+      key: 'conversation.chat.status',
+      owner: { sessionId: SID, running: false },
+    }))
+    expect(nodeCalls[0]).toMatchObject({
       key: 'conversation.chat.node',
       owner: { node: { kind: 'tool-call' }, selectedCallId: undefined },
       entryKey: 'tool-call',
     })
-    const owner = calls[0]?.owner as RoutedChatNodeOwner
+    const owner = nodeCalls[0]?.owner as RoutedChatNodeOwner
     expect((owner.node.data as { readonly root: ToolCallBlock }).root).toBe(block)
     expect(owner.openFile).not.toBe(h.openFile)
     owner.openFile('src/a.ts')

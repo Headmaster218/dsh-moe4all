@@ -132,6 +132,9 @@ importers:
       '@deepseek-ai/cordis-plugin-hmr':
         specifier: workspace:^
         version: link:../../vendor/hmr
+      '@deepseek-ai/cordis-plugin-group':
+        specifier: workspace:^
+        version: link:../../vendor/group
       '@deepseek-ai/cordis-plugin-include':
         specifier: workspace:^
         version: link:../../vendor/include

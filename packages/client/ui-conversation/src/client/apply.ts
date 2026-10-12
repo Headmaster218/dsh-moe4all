@@ -385,6 +385,7 @@ export function apply(ctx: Context): void {
     locale: NS,
     children: {
       'conversation.chat.node': { kind: 'keyed', scope: 'session', inject: CHAT_NODE_INJECT },
+      'conversation.chat.status': { kind: 'list', scope: 'session' },
       'conversation.message.images': { kind: 'single', scope: 'session' },
     },
     store: chatStore,

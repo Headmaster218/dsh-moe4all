@@ -451,6 +451,7 @@ export function ChatView({
           {/* Turn-level loading signal: rides the whole running turn (first-token
               wait, tool execution, streaming) so it never flickers per step. */}
           {running && <TurnStatus startTime={runningTurnStart} t={t} />}
+          {renderSlot('conversation.chat.status', { sessionId, running })}
           {pendingSteering.map(item => (
             <PendingSteeringBubble
               key={item.id}
