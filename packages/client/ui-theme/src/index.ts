@@ -6,7 +6,7 @@ import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import { bootThemeInjection } from './boot-theme.ts'
 import {
   DEFAULT_PREFERENCE, THEME_SETTINGS_NAMESPACE, ThemeSettingsSchema,
-  type ThemePreference, type ThemeSettings,
+  type ThemeSettings,
 } from './theme-settings.ts'
 
 export {
@@ -17,12 +17,12 @@ export {
 const THEME_NAMESPACE = settingsNamespace(THEME_SETTINGS_NAMESPACE)
 
 /** Read the registered preference or use the schema default without a settings provider. */
-function readPreference(ctx: Context): ThemePreference {
+function readPreference(ctx: Context): ThemeSettings {
   const settings = ctx.get('settings')
-  if (settings === undefined) return DEFAULT_PREFERENCE
+  if (settings === undefined) return { preference: DEFAULT_PREFERENCE, darkPreference: 'gray' }
   const section = settings.get(THEME_NAMESPACE) as ThemeSettings | undefined
-  if (section === undefined) return DEFAULT_PREFERENCE
-  return section.preference
+  if (section === undefined) return { preference: DEFAULT_PREFERENCE, darkPreference: 'gray' }
+  return section
 }
 
 /**
@@ -36,6 +36,7 @@ export function apply(ctx: Context): void {
     settingsCtx.settings.register(THEME_NAMESPACE, ThemeSettingsSchema)
   })
   ctx.on('webserver/index-inject', (table) => {
-    table.push(bootThemeInjection(readPreference(ctx)))
+    const setting = readPreference(ctx)
+    table.push(bootThemeInjection(setting.preference, setting.darkPreference))
   })
 }

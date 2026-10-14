@@ -9,5 +9,5 @@
   font-size: 12px;
   line-height: 18px;
   background: var(--dsw-alias-state-error-primary);
-  color: var(--dsw-alias-label-primary-foreground);
+  color: var(--dsw-alias-state-error-foreground, var(--dsw-alias-label-primary-foreground));
 }

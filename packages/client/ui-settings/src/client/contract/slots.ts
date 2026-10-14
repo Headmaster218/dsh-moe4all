@@ -39,6 +39,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * the button without an accessible name (broken-composition state).
      */
     'settings.close': { kind: 'single'; scope: 'root'; owner: SettingsHeaderOwnerProps }
+    /** Persistent feature-owned settings notifications, independent of the Settings panel. */
+    'settings.notification': { kind: 'list'; scope: 'root'; owner: SettingsGeneralItemOwnerProps }
     /**
      * One settings page per list entry. Registrant options carry the nav
      * identity: `id` (section key, drives `only` filtering), `order` (nav

@@ -98,6 +98,12 @@ describe('SettingsRoot trigger', () => {
 })
 
 describe('SettingsPanel chrome seats', () => {
+  it('portals the settings overlay outside sidebar stacking contexts', () => {
+    const { view } = mount()
+    openPanel()
+    expect(view.container.querySelector('[role="dialog"]')).toBeNull()
+    expect(screen.getByRole('dialog').parentElement?.hasAttribute('data-dsh-settings-portal')).toBe(true)
+  })
   it('names the dialog via aria-labelledby pointing at the header seat node', () => {
     mount()
     openPanel()

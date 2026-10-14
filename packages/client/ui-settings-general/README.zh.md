@@ -10,6 +10,8 @@
 
 宿主端在用户设置 seam 中注册 `ui-onboarding`。`ui-settings-models` 提供的欢迎步骤通过既有公开 settings 边界读写其中的 `welcomeNoticeVersion`；外壳本身仍不持有产品策略。
 
+MoE4All 桌面组合在通用设置中加入更新行与常驻的 `settings.notification` outlet。页面作用域的 controller 校验原生消息并驱动共享的 DSH Modal；原生更新器继续负责检查、下载及安装。安装必须由用户点击，通知不会自动安装。关闭进度后仍可从设置重新打开。普通浏览器不暴露桌面更新器，订阅随插件卸载释放。
+
 ## 模型体验
 
 无。该插件渲染浏览器设置 UI；这里没有任何内容进入模型请求。

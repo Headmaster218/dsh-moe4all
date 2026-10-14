@@ -22,8 +22,8 @@ export type HeaderContentProps = PropsRuntime<'settings.header'> & PropsLocale<'
 export function TriggerContent({ wide, t }: TriggerContentProps) {
   return (
     <>
-      {wide ? <IconSettingsOutline16 size={16} /> : <IconSettingsOutline14 size={18} />}
-      {wide && <span className={css.triggerLabel}>{t('trigger')}</span>}
+      {wide ? <IconSettingsOutline16 size={16} /> : <span title={t('trigger')} aria-hidden="true"><IconSettingsOutline14 size={18} /></span>}
+      <span className={wide ? css.triggerLabel : css.hiddenLabel}>{t('trigger')}</span>
     </>
   )
 }

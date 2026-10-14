@@ -156,7 +156,8 @@
 }
 
 .item:disabled {
-  opacity: 0.4;
+  opacity: var(--dsw-control-disabled-opacity, 0.4);
+  color: var(--dsw-alias-label-disabled, var(--dsw-alias-label-secondary));
   cursor: not-allowed;
 }
 

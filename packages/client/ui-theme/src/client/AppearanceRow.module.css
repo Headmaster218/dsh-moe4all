@@ -16,6 +16,11 @@
   color: var(--dsw-alias-label-primary);
 }
 
+.heading { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+.auto { display:flex; align-items:center; gap:8px; font-size:13px; line-height:20px; color:var(--dsw-alias-label-secondary); cursor:pointer; }
+.auto input { accent-color:var(--dsw-alias-button-primary-fill); width:16px; height:16px; margin:0; }
+.mode,.followHint { font-size:12px; line-height:18px; color:var(--dsw-alias-label-tertiary); }
+
 .cubeRow {
   display: flex;
   align-items: stretch;
@@ -28,15 +33,15 @@
  * three sit on one row in the 800 panel, wrapping when narrower. */
 .themeCube {
   box-sizing: border-box;
-  flex: 1 1 180px;
+  flex: 1 1 110px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 4px;
-  padding: 20px 32px;
+  padding: 16px 12px;
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 16px;
+  border-radius: 8px;
   background: transparent;
   font: inherit;
   font-size: 14px;
@@ -48,6 +53,26 @@
 .themeCube:hover:not(.selected) {
   background: var(--dsw-alias-interactive-bg-hover);
 }
+
+.themeCube[data-theme='green']::before,
+.themeCube[data-theme='black']::before,
+.themeCube[data-theme='gray']::before,
+.themeCube[data-theme='white']::before {
+  content: '';
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 50%;
+}
+
+.themeCube[data-theme='green']::before { background: #49644f; }
+.themeCube[data-theme='black']::before { background: #101112; }
+.themeCube[data-theme='gray']::before { background: #303033; }
+.themeCube[data-theme='white']::before { background: #fafbfc; }
+.themeCube[data-theme='green'] svg,
+.themeCube[data-theme='black'] svg,
+.themeCube[data-theme='gray'] svg,
+.themeCube[data-theme='white'] svg { display: none; }
 
 /* Selected cube: #F5F6F7 fill + #ADB2B8 border (static token — the bluish-400
  * step has no alias-layer name). */

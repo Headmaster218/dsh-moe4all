@@ -25,7 +25,7 @@ export function Moe4AllBrandMark({ size, className }: OfficialBrandMarkProps) {
   return (
     <span className={className} style={{
       alignItems: 'center', background: 'var(--dsw-alias-brand-primary)', borderRadius: 4,
-      color: 'var(--dsw-alias-label-primary-foreground)',
+      color: 'var(--dsw-alias-label-primary-inverted)',
       display: 'inline-flex', fontSize: Math.round(size * 0.6), fontWeight: 800,
       height: size, justifyContent: 'center', lineHeight: 1, width: size,
     }}>M</span>

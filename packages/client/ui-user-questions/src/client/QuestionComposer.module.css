@@ -245,10 +245,9 @@
   grid-area: 1 / 1;
 }
 
-/* Checked: label-primary fill with a primary-foreground check — the pair
-   inverts with the theme (dark fill in light mode, light fill in dark mode). */
+/* A label-ink fill uses the surface ink for its inverse checkmark. */
 .checkboxChecked {
-  color: var(--dsw-alias-label-primary-foreground);
+  color: var(--dsw-alias-bg-base);
 }
 
 .checkboxChecked::before {

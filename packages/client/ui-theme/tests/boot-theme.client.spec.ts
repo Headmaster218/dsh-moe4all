@@ -20,11 +20,24 @@ function executeBootstrap(preference?: ThemePreference): void {
 afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
+  document.body.removeAttribute('style')
   document.documentElement.style.removeProperty('color-scheme')
   document.body.removeAttribute(DARK_ATTRIBUTE)
 })
 
 describe('theme bootstrap row', () => {
+  it('applies the chosen MoE4All palette before the client loads, including system mode', () => {
+    vi.stubEnv('MOE4ALL_AGENT', '1')
+    mockSystemDark(true)
+    const row = bootThemeInjection('system', 'green')
+    if (row.kind !== 'script') throw new Error('expected a script')
+    runInNewContext(row.text, { document, matchMedia: globalThis.matchMedia })
+    expect(document.body.style.getPropertyValue('--dsw-alias-bg-base')).toBe('#1e201e')
+    mockSystemDark(false)
+    runInNewContext(row.text, { document, matchMedia: globalThis.matchMedia })
+    expect(document.body.style.getPropertyValue('--dsw-alias-bg-base')).toBe('#fafbfc')
+  })
   it('is a body script row, so it runs before the shell mount', () => {
     mockSystemDark(false)
     const row = bootThemeInjection('dark')

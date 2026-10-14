@@ -1,6 +1,6 @@
 /**
  * Browser theme registry over the `--dsw-*` token stylesheets. The service
- * owns the live theme preference (light/dark/system), resolves `system` through
+ * owns the built-in theme preference, resolves `system` through
  * `prefers-color-scheme`, and publishes immutable snapshots; it never touches
  * the DOM — ui-layout's presenter consumes the resolved snapshot. The Host
  * settings scope loads and stores the preference in the user-settings
@@ -20,9 +20,11 @@ import { AppearanceRow } from './AppearanceRow.tsx'
 import { createAppearanceRowStore } from './settings-store.ts'
 import { installThemeStyles } from './styles.ts'
 import { en, zh, type ThemeKey } from './locales.ts'
+import { MOE4ALL_THEMES } from './moe4all-themes.ts'
+import { installDesktopAppearance } from './desktop-appearance.ts'
 import {
   DEFAULT_PREFERENCE, isThemePreference, THEME_PREFERENCE_FIELD, THEME_SETTINGS_NAMESPACE,
-  type ThemePreference, type ThemeSettings,
+  type DarkThemePreference, type ThemePreference, type ThemeSettings,
 } from '../theme-settings.ts'
 
 export type { AppearanceRowComponentProps, AppearanceRowInjected } from './AppearanceRow.tsx'
@@ -75,6 +77,8 @@ export interface ThemeDefinition {
 export interface ThemeSnapshot {
   /** The persisted preference (may be `system`). */
   preference: ThemePreference
+  /** Dark palette selected for system-following mode. */
+  darkPreference: DarkThemePreference
   /**
    * The resolved active theme (`system` resolved via prefers-color-scheme)
    * with override layers folded into its tokens (seq order, later layers win
@@ -117,8 +121,9 @@ declare module '@deepseek-ai/cordis' {
 }
 
 const BUILTIN_THEMES: readonly ThemeDefinition[] = Object.freeze([
-  Object.freeze({ id: 'light', colorScheme: 'light' as const, tokens: Object.freeze({}) }),
-  Object.freeze({ id: 'dark', colorScheme: 'dark' as const, tokens: Object.freeze({}) }),
+  Object.freeze({ id: 'light', colorScheme: 'light' as const, tokens: Object.freeze(process.env.DSH_CLIENT_BUILD_PROFILE === 'moe4all' ? { ...MOE4ALL_THEMES.find(theme => theme.id === 'white')!.tokens } : {}) }),
+  Object.freeze({ id: 'dark', colorScheme: 'dark' as const, tokens: Object.freeze(process.env.DSH_CLIENT_BUILD_PROFILE === 'moe4all' ? { ...MOE4ALL_THEMES.find(theme => theme.id === 'gray')!.tokens } : {}) }),
+  ...MOE4ALL_THEMES,
 ])
 
 const BUILTIN_INSPECT_TOKENS: readonly ThemeTokenInspection[] = Object.freeze([
@@ -154,6 +159,7 @@ export class ThemeRuntime {
   private themes: ThemeDefinition[] = [...BUILTIN_THEMES]
   private preference: ThemePreference
   private revision = 0
+  private darkPreference: DarkThemePreference = 'gray'
   private snapshot: ThemeSnapshot
   private readonly media: MediaQueryList | undefined
   /** Override layers by source; seq (monotonic) is the stacking order. */
@@ -230,11 +236,23 @@ export class ThemeRuntime {
     this.publish()
   }
 
+  /**
+   * Choose the system-following dark palette without leaving automatic mode.
+   * @param id - Green, Black or Gray palette.
+   */
+  setDarkTheme(id: DarkThemePreference): void {
+    if (this.darkPreference === id) return
+    this.darkPreference = id
+    void this.host.set('darkPreference', id)
+    this.publish()
+  }
+
   /** Adopt the scope's accepted durable preference without writing it back. */
   private adopt(): void {
     const section = this.host.getSnapshot().value
-    if (section === undefined || this.preference === section.preference) return
+    if (section === undefined || (this.preference === section.preference && this.darkPreference === (section.darkPreference ?? 'gray'))) return
     this.preference = section.preference
+    this.darkPreference = section.darkPreference ?? 'gray'
     this.publish()
   }
 
@@ -292,7 +310,9 @@ export class ThemeRuntime {
 
   private buildSnapshot(): ThemeSnapshot {
     const resolvedId = this.preference === 'system'
-      ? (this.media?.matches === true ? 'dark' : 'light')
+      ? (process.env.DSH_CLIENT_BUILD_PROFILE === 'moe4all'
+          ? (this.media?.matches === true ? this.darkPreference : 'white')
+          : (this.media?.matches === true ? 'dark' : 'light'))
       : this.preference
     // Both built-ins always exist; a registered preference id resolves or has
     // been reset by its disposer, so the lookup cannot miss.
@@ -301,6 +321,7 @@ export class ThemeRuntime {
     if (active === undefined) throw new Error(`theme registry lost "${resolvedId}"`)
     return Object.freeze({
       preference: this.preference,
+      darkPreference: this.darkPreference,
       active: this.composeActive(active),
       themes: Object.freeze([...this.themes]),
       revision: this.revision,
@@ -387,13 +408,14 @@ export function apply(ctx: ClientContext): void {
   const host = ctx.settingsScope.bind<ThemeSettings>({ namespace: THEME_SETTINGS_NAMESPACE })
   const theme = new ThemeRuntime(ctx, host)
   ctx.provide('theme', theme)
+  installDesktopAppearance(ctx, theme)
 
   ctx.effect(() => ctx.locale.register(SETTINGS_NS, { zh, en }), 'ui-theme: settings row dictionaries')
 
   const store = createAppearanceRowStore()
   let bound: BoundActions<typeof store> | undefined
   const sync = (snapshot: ThemeSnapshot): void => {
-    bound?.sync(snapshot.preference, snapshot.revision)
+    bound?.sync(snapshot.preference, snapshot.darkPreference, snapshot.active.id, snapshot.revision)
   }
   ctx.on('theme/change', sync)
   const injected = (actions: BoundActions<typeof store>): AppearanceRowInjected => {
@@ -403,6 +425,7 @@ export function apply(ctx: ClientContext): void {
     sync(theme.getTheme())
     return {
       setTheme: (id) => { theme.setTheme(id) },
+      setDarkTheme: (id) => { theme.setDarkTheme(id) },
     }
   }
   ctx.slots.inject('settings.general.item', () => ctx.slots.register({
