@@ -10,8 +10,44 @@ export type DirectoryPickerRunner = NativeCommandRunner
 export interface DirectoryPickerInternals {
   platform?: NodeJS.Platform
   run?: DirectoryPickerRunner
+  desktopBridge?: { baseUrl: string, token: string } | null
+  fetch?: typeof fetch
   /** Replaces the in-process Win32 dialog (`pickWin32Directory`) for deterministic tests. */
   pickWin32Dialog?: (signal: AbortSignal) => Promise<string | null>
+}
+
+interface DesktopPickerResponse {
+  path?: unknown
+}
+
+function configuredDesktopBridge(): { baseUrl: string, token: string } | null {
+  const baseUrl = process.env.MOE4ALL_DESKTOP_BRIDGE?.trim()
+  const token = process.env.MOE4ALL_DESKTOP_TOKEN?.trim()
+  if (!baseUrl || !token) return null
+  try {
+    const url = new URL(baseUrl)
+    if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1') return null
+    return { baseUrl: url.origin, token }
+  } catch {
+    return null
+  }
+}
+
+async function pickFromDesktopBridge(
+  bridge: { baseUrl: string, token: string },
+  signal: AbortSignal,
+  fetcher: typeof fetch,
+): Promise<string | null> {
+  const response = await fetcher(new URL('/pick-directory', bridge.baseUrl), {
+    method: 'POST',
+    headers: { 'X-MoE4All-Token': bridge.token },
+    signal,
+  })
+  if (!response.ok) throw new Error(`MoE4All desktop directory picker failed (${String(response.status)}).`)
+  const body = await response.json() as DesktopPickerResponse
+  if (body.path === null || body.path === undefined || body.path === '') return null
+  if (typeof body.path !== 'string') throw new Error('MoE4All desktop directory picker returned an invalid path.')
+  return body.path
 }
 
 function outputPath(stdout: string): string | null {
@@ -51,6 +87,11 @@ export async function pickNativeDirectory(
 ): Promise<string | null> {
   const platform = internals.platform ?? process.platform
   const run = internals.run ?? runNativeCommand
+  const bridge = internals.desktopBridge === undefined ? configuredDesktopBridge() : internals.desktopBridge
+
+  if (bridge !== null) {
+    return pickFromDesktopBridge(bridge, signal, internals.fetch ?? fetch)
+  }
 
   if (platform === 'darwin') {
     try {

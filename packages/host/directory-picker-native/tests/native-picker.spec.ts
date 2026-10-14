@@ -33,6 +33,28 @@ const signal = () => new AbortController().signal
 const noDialog = async (): Promise<string | null> => { throw new Error('dialog unavailable') }
 
 describe('native directory picker', () => {
+  it('uses the authenticated MoE4All desktop bridge before platform pickers', async () => {
+    const fetcher = vi.fn<typeof fetch>(async (_input, init) => {
+      expect(init).toMatchObject({ method: 'POST', headers: { 'X-MoE4All-Token': 'secret' } })
+      return new Response(JSON.stringify({ path: 'D:\\MoE4All\\workspace' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    })
+    const run = vi.fn<DirectoryPickerRunner>()
+    const pickWin32Dialog = vi.fn(async (): Promise<string | null> => 'C:\\fallback')
+    await expect(pickNativeDirectory(signal(), {
+      platform: 'win32',
+      run,
+      pickWin32Dialog,
+      desktopBridge: { baseUrl: 'http://127.0.0.1:43123', token: 'secret' },
+      fetch: fetcher,
+    })).resolves.toBe('D:\\MoE4All\\workspace')
+    expect(fetcher).toHaveBeenCalledOnce()
+    expect(run).not.toHaveBeenCalled()
+    expect(pickWin32Dialog).not.toHaveBeenCalled()
+  })
+
   it('uses the macOS folder chooser and maps user cancellation to null', async () => {
     const run = vi.fn<DirectoryPickerRunner>(async () => ({ stdout: '/Users/test/project/\n', stderr: '' }))
     await expect(pickNativeDirectory(signal(), { platform: 'darwin', run })).resolves.toBe('/Users/test/project/')

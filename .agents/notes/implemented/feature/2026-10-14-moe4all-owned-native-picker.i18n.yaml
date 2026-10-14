@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-10-14-moe4all-owned-native-picker.md
+2026-10-14-moe4all-owned-native-picker.md: 4ab289f0f7a1422440b924cf1bb05808fc079adc
+2026-10-14-moe4all-owned-native-picker.zh.md: 37c02bedb25d4c98c74a4e5d9ee958824292dff4
