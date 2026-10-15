@@ -169,6 +169,64 @@ describe('PiAiAdapter provider routing', () => {
     expect(server.requests).toHaveLength(2)
   })
 
+  it.each(['Qwen3.6-35B-A3B', 'Qwen3.8-Flash-Next'])('disables thinking only for %s titles while retaining the selected model', async (model) => {
+    const server = await mockServer([{ events: textEvents }, { events: textEvents }, { events: textEvents }])
+    const ctx = new Context()
+    await ctx.plugin(LlmRuntime)
+    ctx.llm.registerAdapter(['moe4all'], adapterOf({
+      moe4all: {
+        api: 'openai-completions', baseURL: server.url, reasoning: 'medium',
+        models: [{ id: model, reasoningEfforts: { off: null, medium: 'medium', xhigh: 'xhigh' }, compat: {
+          supportsDeveloperRole: false,
+          thinkingFormat: 'chat-template',
+          chatTemplateKwargs: {
+            enable_thinking: { $var: 'thinking.enabled' },
+            reasoning_effort: { $var: 'thinking.effort', omitWhenOff: true },
+          },
+        } }],
+      },
+    }))
+
+    for (const reasoningEffort of [undefined, ReasoningEffortId('xhigh')]) {
+      const title = await assemble(ctx, { provider: 'moe4all', model, messages: [], purpose: 'session-title', maxTokens: 64, reasoningEffort })
+      expect(title.finish).toEqual({ kind: 'stop' })
+    }
+    const main = await assemble(ctx, { provider: 'moe4all', model, messages: [], reasoningEffort: ReasoningEffortId('xhigh') })
+    expect(main.finish).toEqual({ kind: 'stop' })
+    expect(server.requests).toHaveLength(3)
+    for (const title of server.requests.slice(0, 2)) {
+      expect(title).toMatchObject({ model, chat_template_kwargs: { enable_thinking: false }, max_completion_tokens: 64 })
+      expect(title).not.toHaveProperty('reasoning_effort')
+    }
+    expect(server.requests[2]).toMatchObject({ model, chat_template_kwargs: { enable_thinking: true, reasoning_effort: 'xhigh' } })
+    await ctx.fiber.dispose()
+  })
+
+  it('disables thinking for catalog-based titles despite the provider default', async () => {
+    const server = await mockServer([{ events: textEvents }, { events: textEvents }])
+    const ctx = await harness(server.url, { reasoning: 'max' })
+    await assemble(ctx, { model: 'deepseek-v4-flash', messages: [], purpose: 'session-title' })
+    await assemble(ctx, { model: 'deepseek-v4-flash', messages: [], purpose: 'compaction' })
+    expect(server.requests[0]).toMatchObject({ model: 'deepseek-v4-flash', thinking: { type: 'disabled' } })
+    expect(server.requests[0]).not.toHaveProperty('reasoning_effort')
+    expect(server.requests[1]).toMatchObject({ thinking: { type: 'enabled' }, reasoning_effort: 'max' })
+    await ctx.fiber.dispose()
+  })
+
+  it('rejects titles before dispatch when the selected model cannot disable thinking', async () => {
+    const server = await mockServer([])
+    const ctx = new Context()
+    await ctx.plugin(LlmRuntime)
+    ctx.llm.registerAdapter(['moe4all'], adapterOf({ moe4all: {
+      api: 'openai-completions', baseURL: server.url, reasoning: 'medium',
+      models: [{ id: 'thinking-only', reasoningEfforts: { medium: 'medium' } }],
+    } }))
+    const title = await assemble(ctx, { provider: 'moe4all', model: 'thinking-only', messages: [], purpose: 'session-title' })
+    expect(title.finish).toMatchObject({ kind: 'error', failure: { code: 'UNSUPPORTED_REASONING_EFFORT' } })
+    expect(server.requests).toHaveLength(0)
+    await ctx.fiber.dispose()
+  })
+
   it('preserves omitted profile options when constructing the adapter directly', async () => {
     const server = await mockServer([{ events: textEvents }])
     const ctx = new Context()

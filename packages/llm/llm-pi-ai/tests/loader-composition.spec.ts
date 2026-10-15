@@ -123,6 +123,62 @@ describe('llm-pi-ai real dormant composition', () => {
     expect(server.headers[0]?.authorization).toBe('Bearer key-from-store')
   })
 
+  it('keeps title calls on each selected MoE4All model without changing the main reasoning default', async () => {
+    const server = await mockServer(Array.from({ length: 4 }, () => ({ events: textEvents })))
+    const { ctx, settingsPath } = await loadComposition()
+    const models = ['Qwen3.6-35B-A3B', 'Qwen3.8-Flash-Next']
+    await writeFile(settingsPath, JSON.stringify({ 'llm-pi-ai': { providers: { moe4all: {
+      api: 'openai-completions', apiKeyEnv: 'PI_COMPOSITION_KEY', baseURL: server.url, reasoning: 'medium',
+      models: models.map(id => ({ id, reasoningEfforts: { off: null, medium: 'medium' }, compat: {
+        supportsDeveloperRole: false, thinkingFormat: 'chat-template',
+        chatTemplateKwargs: {
+          enable_thinking: { $var: 'thinking.enabled' },
+          reasoning_effort: { $var: 'thinking.effort', omitWhenOff: true },
+        },
+      } })),
+    } } } }))
+    await vi.waitFor(() => expect(ctx.llm.listProviders().map(provider => provider.id)).toEqual(['moe4all']), { timeout: 5000 })
+    for (const model of models) {
+      const main = await assemble(ctx, { provider: 'moe4all', model, messages: [] })
+      const title = await assemble(ctx, { provider: 'moe4all', model, messages: [], purpose: 'session-title' })
+      expect(main.finish).toEqual({ kind: 'stop' })
+      expect(title.finish).toEqual({ kind: 'stop' })
+    }
+    expect(server.requests.map(request => {
+      const body = request as { model: string; chat_template_kwargs: unknown }
+      return { model: body.model, thinking: body.chat_template_kwargs }
+    })).toMatchInlineSnapshot(`
+      [
+        {
+          "model": "Qwen3.6-35B-A3B",
+          "thinking": {
+            "enable_thinking": true,
+            "reasoning_effort": "medium",
+          },
+        },
+        {
+          "model": "Qwen3.6-35B-A3B",
+          "thinking": {
+            "enable_thinking": false,
+          },
+        },
+        {
+          "model": "Qwen3.8-Flash-Next",
+          "thinking": {
+            "enable_thinking": true,
+            "reasoning_effort": "medium",
+          },
+        },
+        {
+          "model": "Qwen3.8-Flash-Next",
+          "thinking": {
+            "enable_thinking": false,
+          },
+        },
+      ]
+    `)
+  })
+
   it('continues natively after max-token assembly drops a tool call, with pruned replay metadata', async () => {
     vi.stubEnv('PI_COMPOSITION_KEY', '')
     const server = await mockServer([
