@@ -40,7 +40,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'settings.close': { kind: 'single'; scope: 'root'; owner: SettingsHeaderOwnerProps }
     /** Persistent feature-owned settings notifications, independent of the Settings panel. */
-    'settings.notification': { kind: 'list'; scope: 'root'; owner: SettingsGeneralItemOwnerProps }
+    'settings.notification': { kind: 'list'; scope: 'root'; owner: SettingsNotificationOwnerProps }
     /**
      * One settings page per list entry. Registrant options carry the nav
      * identity: `id` (section key, drives `only` filtering), `order` (nav
@@ -94,6 +94,12 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 export interface SettingsGeneralItemOwnerProps {
   /** Marker field: item owner props are intentionally empty. */
   children?: never
+}
+
+/** Settings-owned navigation made available to persistent notification consumers. */
+export interface SettingsNotificationOwnerProps {
+  /** Open a registered section in the existing Settings panel. */
+  openSection: (id: string) => void
 }
 
 /** Owner share of a Plugins tab (the section supplies nothing). */

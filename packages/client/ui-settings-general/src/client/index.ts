@@ -25,7 +25,8 @@ import { GeneralSection } from './GeneralSection.tsx'
 import { SettingsDocumentAction } from './SettingsDocumentAction.tsx'
 import type { SettingsDocumentActionInjected } from './SettingsDocumentAction.tsx'
 import { SettingsDocumentStore } from './settings-document-store.ts'
-import { CapabilitiesSection, CapabilitiesDialog } from './Capabilities.tsx'
+import { CapabilitiesSection, CapabilitiesNotification } from './Capabilities.tsx'
+import { DesktopPicker } from './DesktopPicker.tsx'
 import { DesktopController, desktopBridge } from './desktop-controller.ts'
 import { en, zh, type SettingsKey } from './locales.ts'
 
@@ -69,6 +70,7 @@ export function apply(ctx: ClientContext): void {
   // seat, and the nav label is a thunk the owner resolves per render — no
   // locale/change re-registration wiring.
   const t = ctx.locale.bind(NS)
+  const isDesktop = desktopBridge() !== undefined
   const connection = ctx.get('connection') as ConnectionHandle
   // The action follows the shared describe mirror, whose owning plugin
   // already refreshes it on document commits and reconnects.
@@ -108,6 +110,7 @@ export function apply(ctx: ClientContext): void {
                 order: e.options.order ?? 0,
                 label: resolveSlotLabel(e.options.label) ?? '',
               }))
+              .map(row => isDesktop && row.id === 'moe4all' ? { ...row, order: 12 } : row)
               .sort((a, b) => a.order - b.order)
           }
           return rows
@@ -180,7 +183,11 @@ export function apply(ctx: ClientContext): void {
     ctx.slots.inject('settings.notification', () => ctx.slots.register({
       name: 'settings.notification', id: 'desktop-updates', locale: NS,
       inject: () => ({ controller: desktop, hooks: { desktop: desktop.store } }),
-    }, CapabilitiesDialog))
+    }, CapabilitiesNotification))
+    ctx.slots.inject('settings.notification', () => ctx.slots.register({
+      name: 'settings.notification', id: 'desktop-picker', locale: NS,
+      inject: () => ({ controller: desktop, hooks: { desktop: desktop.store } }),
+    }, DesktopPicker))
   }
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',

@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import { DesktopController, desktopBridge } from '../src/client/desktop-controller.ts'
-import { CapabilitiesSection, CapabilitiesDialog } from '../src/client/Capabilities.tsx'
+import { CapabilitiesSection, CapabilitiesNotification } from '../src/client/Capabilities.tsx'
 import { capabilitySnapshot } from '../src/client/capability-contract.ts'
 import { en } from '../src/client/locales.ts'
 
@@ -19,7 +19,7 @@ function fixture() {
   const snapshot = { schema: 'moe4all/capabilities/v1', settings: { autoCheck: true, preview: true, skipped: {} }, plugins: [plugin], checking: false, pending: false }
   const caps = { type: 'moe4all-capabilities-state', busy: false, snapshot }
   const t = (key: string) => (en as Record<string, string>)[key] ?? key
-  const props = { controller, useDesktop: bindSnapshotSelector(controller.store), t }
+  const props = { controller, useDesktop: bindSnapshotSelector(controller.store), t, openSection: vi.fn() }
   return { bridge, controller, receive, send, agent, caps, props }
 }
 
@@ -43,11 +43,11 @@ it('rejects malformed native snapshots and never installs on notification', () =
   expect(f.bridge.postMessage).toHaveBeenCalledTimes(2)
 })
 
-it('uses a DSH in-page Modal and requires a second explicit download confirmation', () => {
+it('uses the Settings section and requires a second explicit download confirmation', () => {
   const f = fixture()
-  render(<CapabilitiesDialog {...f.props} />)
+  render(<CapabilitiesSection {...f.props} />)
   act(() => { f.send(f.agent); f.send(f.caps) })
-  expect(screen.getByRole('dialog', { name: 'Capabilities' })).toBeDefined()
+  expect(screen.queryByRole('dialog')).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: 'Download and prepare Mneme Memory' }))
   expect(f.bridge.postMessage).toHaveBeenCalledTimes(2)
   const confirmation = screen.getByRole('region', { name: 'Confirm update' })
@@ -58,17 +58,15 @@ it('uses a DSH in-page Modal and requires a second explicit download confirmatio
 
 it('shows download progress, can dismiss it and reopen the same state without another download', () => {
   const f = fixture()
-  render(<CapabilitiesDialog {...f.props} />)
+  const view = render(<CapabilitiesSection {...f.props} />)
   act(() => { f.send(f.agent); f.send(f.caps) })
   act(() => f.send({ ...f.agent, phase: 'download', completed: 50, open: false }))
   expect(screen.getByRole('progressbar').getAttribute('value')).toBe('50')
-  fireEvent.click(screen.getByRole('button', { name: 'Close' }))
-  expect(screen.queryByRole('dialog')).toBeNull()
-  act(() => f.controller.open())
+  view.unmount()
+  render(<CapabilitiesSection {...f.props} />)
   expect(screen.getByRole('progressbar')).toBeDefined()
   expect(f.bridge.postMessage).toHaveBeenCalledTimes(2)
   act(() => { f.controller.close(); f.send({ ...f.agent, phase: 'error', message: 'Download interrupted', open: true }) })
-  expect(screen.getByRole('dialog', { name: 'Capabilities' })).toBeDefined()
   expect(screen.getByText('Download interrupted')).toBeDefined()
 })
 
@@ -109,7 +107,8 @@ it('keeps introductions, recovery actions and restart instructions on their comp
   expect(within(card).getByText(en['cap.details'])).toBeDefined()
   expect(within(card).getByRole('button', { name: 'Retry update Mneme Memory' })).toBeDefined()
   act(() => f.send({ ...f.caps, snapshot: { ...f.caps.snapshot, plugins: [{ ...f.caps.snapshot.plugins[0], updateAvailable: false, phase: 'complete' }] } }))
-  expect(within(card).getByText(en['cap.appliedInfo'])).toBeDefined()
+  expect(within(card).getByText(en['cap.current'])).toBeDefined()
+  expect(within(card).queryByText(en['cap.complete'])).toBeNull()
 })
 
 it('explains the Engine Manager prerequisite without presenting it as an Engine installation failure', () => {
@@ -130,16 +129,32 @@ it('does not notify subscribers again for identical capability status echoes', (
   expect(f.controller.store.getSnapshot()).toBe(before)
 })
 
-it('reopens once when a background preparation needs restart, then preserves dismissal', () => {
+it('does not reopen for stored completion, errors, or a prepared operation', () => {
   const f = fixture()
   f.send({ ...f.caps, snapshot: { ...f.caps.snapshot, plugins: [{ ...f.caps.snapshot.plugins[0], phase: 'prepare' }] } })
   f.controller.close()
   const ready = { ...f.caps, snapshot: { ...f.caps.snapshot, pending: true, plugins: [{ ...f.caps.snapshot.plugins[0], phase: 'ready', pending: true }] } }
   f.send(ready)
-  expect(f.controller.store.getSnapshot().open).toBe(true)
+  expect(f.controller.store.getSnapshot().open).toBe(false)
   f.controller.close()
   f.send(structuredClone(ready))
   expect(f.controller.store.getSnapshot().open).toBe(false)
+  for (const phase of ['complete', 'error', 'rolled-back']) {
+    const next = fixture()
+    next.send({ ...f.caps, snapshot: { ...f.caps.snapshot, plugins: [{ ...f.caps.snapshot.plugins[0], updateAvailable: false, phase }] } })
+    expect(next.controller.store.getSnapshot().open).toBe(false)
+  }
+})
+
+it('navigates new-version notices into Settings without mounting another modal', () => {
+  const f = fixture()
+  render(<CapabilitiesNotification {...f.props} />)
+  act(() => f.send(f.caps))
+  expect(f.props.openSection).toHaveBeenCalledWith('capabilities')
+  expect(screen.queryByRole('dialog')).toBeNull()
+  expect(f.controller.store.getSnapshot().open).toBe(false)
+  act(() => f.send(structuredClone(f.caps)))
+  expect(f.props.openSection).toHaveBeenCalledTimes(1)
 })
 
 it('does not interrupt a check for repeated automatic popups and confirms restart separately', () => {
@@ -147,7 +162,7 @@ it('does not interrupt a check for repeated automatic popups and confirms restar
   f.send({ ...f.caps, snapshot: { ...f.caps.snapshot, checking: true } })
   expect(f.controller.store.getSnapshot().open).toBe(false)
   f.send({ ...f.caps, snapshot: { ...f.caps.snapshot, pending: true } })
-  render(<CapabilitiesDialog {...f.props} />)
+  render(<CapabilitiesSection {...f.props} />)
   fireEvent.click(screen.getByRole('button', { name: 'Restart and apply' }))
   expect(f.bridge.postMessage).toHaveBeenCalledTimes(2)
   const confirmation = screen.getByRole('region', { name: 'Confirm update' })

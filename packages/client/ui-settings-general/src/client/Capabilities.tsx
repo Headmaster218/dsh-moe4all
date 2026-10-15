@@ -1,7 +1,7 @@
-/** Agent-owned update presentation inside the existing Settings and Modal composition. */
-import { useState } from 'react'
-import { Button, Modal, Tooltip, IconRefreshOutline16, IconDownloadOutline16, IconCloseOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
+/** Agent-owned update presentation inside the existing Settings section. */
+import { useEffect, useState } from 'react'
+import { Button, Tooltip, IconRefreshOutline16, IconDownloadOutline16, IconCloseOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import type { DesktopController, DesktopState } from './desktop-controller.ts'
 import type { CapabilityRow } from './capability-contract.ts'
@@ -11,12 +11,13 @@ import css from './Capabilities.module.css'
 type Face = { controller: DesktopController; hooks: { desktop: SnapshotStore<DesktopState> } }
 type Props = InjectFace<Face> & PropsLocale<'settings'>
 type Confirm = { kind: 'install'; row: CapabilityRow } | { kind: 'restart' } | { kind: 'rollback' }
-const progressPhases = new Set(['download', 'downloading', 'prepare', 'verify', 'verifying', 'extract', 'extracting', 'install', 'installing', 'finalizing'])
+const progressPhases = new Set(['download', 'downloading', 'prepare', 'snapshot', 'dependencies', 'validate', 'verify', 'verifying', 'extract', 'extracting', 'install', 'installing', 'finalizing'])
 const phases: Record<string, SettingsKey> = {
   checking: 'cap.checking', available: 'cap.update', current: 'cap.current', download: 'cap.downloading', downloading: 'cap.downloading',
   verify: 'cap.verifying', verifying: 'cap.verifying', prepare: 'cap.preparing', extract: 'cap.extracting', extracting: 'cap.extracting',
   install: 'cap.installing', installing: 'cap.installing', finalizing: 'cap.installing', ready: 'cap.ready', 'awaiting-health': 'cap.waitingHealth',
-  complete: 'cap.complete', cancelled: 'cap.cancelled', 'rolled-back': 'cap.rolledBack', error: 'cap.error',
+  complete: 'cap.current', cancelled: 'cap.cancelled', 'rolled-back': 'cap.current', error: 'cap.error',
+  snapshot: 'cap.snapshot', dependencies: 'cap.dependencies', validate: 'cap.validate',
 }
 const names: Record<string, SettingsKey> = { engine: 'cap.engineName', 'dsh-llm-moe4all': 'cap.manager', 'dsh-mneme-moe4all': 'cap.mneme',
   'dsh-market-moe4all': 'cap.market', 'dsh-remote-web-ui-moe4all': 'cap.remote', 'dsh-plugin-cron-moe4all': 'cap.cron',
@@ -32,7 +33,7 @@ function agentRow(state: DesktopState): CapabilityRow {
     completed: state.completed, total: state.total, releaseUrl: 'https://github.com/Headmaster218/MoE4All-Agent/releases' }
 }
 
-/** Render the same feature inside the Settings section and the automatic notification dialog. */
+/** Component status and confirmed update actions share the Settings-owned section. */
 function Content({ state, controller, t }: { state: DesktopState; controller: DesktopController; t: Props['t'] }) {
   const [confirmation, setConfirmation] = useState<Confirm>()
   const snapshot = state.capabilities
@@ -79,9 +80,10 @@ function Content({ state, controller, t }: { state: DesktopState; controller: De
         const progress = row.total > 0 ? Math.min(100, row.completed * 100 / row.total) : undefined
         const phase = row.error ? (row.kind === 'plugin' ? 'cap.failed' : 'cap.error') : row.pending ? 'cap.ready' : active ? phases[row.phase]! : skipped && row.updateAvailable ? 'cap.skipped' : row.updateAvailable ? 'cap.update' : phases[row.phase] ?? 'cap.idle'
         const url = /^https:\/\/github\.com\/Headmaster218\/[a-z0-9_-]+\/releases(?:\/tag\/[a-z0-9.+-]+)?$/iu.test(row.releaseUrl) ? row.releaseUrl : undefined
-        const hint: SettingsKey | undefined = row.managerUpdateRequired ? 'cap.managerRequired' : row.pending ? 'cap.preparedInfo'
+        const hint: SettingsKey | undefined = row.managerUpdateRequired ? 'cap.managerRequired' : row.requiresStop ? 'cap.stopEngine'
+          : row.externallyManaged ? 'cap.externalInfo' : row.pending ? 'cap.preparedInfo'
           : row.error && row.kind === 'plugin' ? 'cap.failedInfo' : active && row.kind === 'plugin' ? 'cap.preparingInfo'
-          : row.phase === 'complete' ? 'cap.appliedInfo' : row.phase === 'rolled-back' ? 'cap.restoredInfo' : undefined
+          : undefined
         return <li className={css.item} key={row.id} data-capability={row.id} aria-label={name(row)}>
           <div className={css.group}>{t(row.kind === 'agent' ? 'cap.agent' : row.kind === 'engine' ? 'cap.engine' : 'cap.plugins')}</div>
           <div className={css.row}>
@@ -93,12 +95,18 @@ function Content({ state, controller, t }: { state: DesktopState; controller: De
               <span>{row.installedVersion || t('cap.none')}</span>{row.latestVersion && row.latestVersion !== row.installedVersion && <><span aria-hidden="true">→</span><span>{row.latestVersion}</span></>}
           </div>
           {active && <div className={css.progress} role="status"><progress max="100" value={progress} aria-label={`${name(row)} ${t(phase)}`} />
-            <span>{progress === undefined ? t(phase) : `${progress.toFixed(0)}% · ${(row.completed / 1048576).toFixed(1)} / ${(row.total / 1048576).toFixed(1)} MiB`}</span>
+            <span>{row.phase === 'snapshot' ? `${t(phase)} · ${row.completed} / ${row.total}`
+              : row.phase === 'validate' ? `${t(phase)} · ${row.completed} ${t('cap.files')}`
+              : progress === undefined ? t(phase) : row.kind === 'agent' && row.phase === 'extract'
+              ? `${progress.toFixed(0)}% · ${row.completed} / ${row.total} ${t('cap.files')}`
+              : `${progress.toFixed(0)}% · ${(row.completed / 1048576).toFixed(1)} / ${(row.total / 1048576).toFixed(1)} MiB`}</span>
             {row.kind !== 'agent' && <Tooltip label={t('cap.cancel')}><span className={css.iconWrap}><Button size="sm" variant="ghost" className={css.iconButton} aria-label={t('cap.cancel')}
               onClick={() => controller.command(row.kind === 'engine' ? 'engine-cancel' : 'cancel')}><IconCloseOutline16 /></Button></span></Tooltip>}
           </div>}
           {hint && <p className={row.error ? css.error : css.hint} role="status">{t(hint)}</p>}
           {row.error && <details className={css.details}><summary>{t('cap.details')}</summary><p className={css.error}>{row.error}</p></details>}
+          {row.lastUpdate && <details className={css.details}><summary>{t('cap.lastUpdate')}</summary>
+            <p>{row.lastUpdate.from} → {row.lastUpdate.to}<br />{new Date(row.lastUpdate.at).toLocaleString()}</p></details>}
           <div className={css.footer}>
             {url && <a className={css.release} href={url} target="_blank" rel="noreferrer">{t('cap.release')}</a>}
             <div className={css.actions}>
@@ -126,17 +134,19 @@ function Content({ state, controller, t }: { state: DesktopState; controller: De
   </div>
 }
 
-/** Settings navigation entry between Plugins and MoE4All; no separate native window. */
+/** Settings navigation entry after Plugins; no separate update dialog. */
 export function CapabilitiesSection({ useDesktop, controller, t }: Props) {
   const state = useDesktop(value => value)
   return <section className={css.section}><h2 className={css.heading}>{t('cap.title')}</h2><Content state={state} controller={controller} t={t} /></section>
 }
 
-/** Automatic update notification uses the shared DSH in-page Modal and can be reopened from Settings. */
-export function CapabilitiesDialog({ useDesktop, controller, t }: Props) {
-  const state = useDesktop(value => value)
-  return <Modal open={state.open} onClose={() => controller.close()} title={t('cap.title')} closeLabel={t('cap.close')}
-    className={css.dialog!} contentClassName={css.modalContent!}>
-    <Content state={state} controller={controller} t={t} />
-  </Modal>
+/** New-version notifications navigate the Settings-owned page; no second dialog is mounted. */
+export function CapabilitiesNotification({ useDesktop, controller, openSection }: Props & PropsRuntime<'settings.notification'>) {
+  const open = useDesktop(value => value.open && !value.picker)
+  useEffect(() => {
+    if (!open) return
+    openSection('capabilities')
+    controller.close()
+  }, [open, openSection, controller])
+  return null
 }

@@ -1,0 +1,20 @@
+.dialog { width:min(780px,100%); max-height:calc(100dvh - 48px); border-radius:8px; }
+.content { display:flex; flex-direction:column; min-height:0; gap:12px; overflow:auto; color:var(--dsw-alias-label-primary); }
+.navigation { display:flex; gap:8px; min-width:0; }
+.navigation input,.navigation select { min-width:0; border:1px solid var(--dsw-alias-border-l1); border-radius:6px; background:var(--dsw-alias-bg-layer-2); color:var(--dsw-alias-label-primary); padding:7px 9px; font:inherit; }
+.navigation input { flex:1; }
+.navigation select { max-width:110px; }
+.files { height:340px; max-height:45dvh; min-height:120px; overflow:auto; border:1px solid var(--dsw-alias-border-l1); border-radius:6px; }
+.entry { width:100%; display:flex; align-items:center; gap:10px; padding:9px 12px; border:0; border-bottom:1px solid var(--dsw-alias-border-l1); text-align:start; background:transparent; color:var(--dsw-alias-label-primary); font:inherit; cursor:pointer; }
+.entry:hover { background:var(--dsw-alias-interactive-bg-hover); }
+.entry[aria-pressed=true] { background:var(--dsw-alias-interactive-bg-active); outline:1px solid var(--dsw-alias-brand-primary); outline-offset:-1px; }
+.entry:focus-visible { outline:2px solid var(--dsw-alias-brand-primary); outline-offset:-2px; }
+.entry>svg { flex-shrink:0; }
+.entry>span:first-of-type { min-width:0; overflow-wrap:anywhere; }
+.kind { margin-left:auto; flex-shrink:0; font-size:11px; color:var(--dsw-alias-label-secondary); }
+.footer { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:8px; }
+.selection { flex:1; min-width:100px; overflow-wrap:anywhere; font-size:12px; color:var(--dsw-alias-label-secondary); }
+.hint { margin:10px; font-size:12px; color:var(--dsw-alias-label-secondary); }
+.error { color:var(--dsw-alias-state-error-primary); font-size:12px; overflow-wrap:anywhere; }
+.error details { margin-top:6px; }
+@media(max-width:540px) { .navigation { flex-wrap:wrap; } .navigation input { flex-basis:55%; } .dialog { max-height:calc(100dvh - 24px); } }

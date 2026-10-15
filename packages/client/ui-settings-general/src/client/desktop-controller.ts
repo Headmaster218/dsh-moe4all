@@ -1,6 +1,7 @@
 /** Page-scoped bridge to the desktop application updater; browser deployments omit it. */
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import { capabilitySnapshot, type CapabilitySnapshot } from './capability-contract.ts'
+import { pickerSnapshot, type PickerSnapshot } from './picker-contract.ts'
 
 /** Native update phases, with values validated before entering the UI store. */
 export type DesktopPhase = 'idle' | 'checking' | 'available' | 'current' | 'download' | 'verify' | 'extract' | 'install' | 'error'
@@ -17,6 +18,7 @@ export interface DesktopState {
   capabilities?: CapabilitySnapshot
   capabilityBusy?: boolean
   capabilityError?: string
+  picker?: PickerSnapshot | null
 }
 
 type DesktopCommand = 'status' | 'check' | 'install' | 'release' | 'browser'
@@ -40,6 +42,12 @@ export class DesktopController {
     const value = event.data
     if (typeof value !== 'object' || value === null) return
     const data = value as Record<string, unknown>
+    if (data.type === 'moe4all-picker-state') {
+      const picker = data.picker === null ? null : pickerSnapshot(data.picker)
+      if (picker === undefined) return
+      this.store.set({ ...this.store.getSnapshot(), picker })
+      return
+    }
     if (data.type === 'moe4all-capabilities-state' && typeof data.busy === 'boolean') {
       const capabilities = capabilitySnapshot(data.snapshot)
       if (!capabilities) return
@@ -47,9 +55,7 @@ export class DesktopController {
       if (signature === this.lastCapabilities) return
       this.lastCapabilities = signature
       const state = this.store.getSnapshot()
-      const outcome = capabilities.plugins.some(row => ['ready', 'error', 'complete', 'rolled-back'].includes(row.phase)
-        && state.capabilities?.plugins.find(old => old.id === row.id)?.phase !== row.phase)
-      this.store.set({ ...state, capabilities, capabilityBusy: data.busy, open: state.open || outcome })
+      this.store.set({ ...state, capabilities, capabilityBusy: data.busy })
       this.notifyUpdates()
       return
     }
@@ -96,6 +102,13 @@ export class DesktopController {
     this.bridge.postMessage({ type: 'moe4all-capabilities-command', command, ...options })
   }
 
+  /** Native ownership and selected file type are checked again by the desktop process. */
+  pick(command: 'list' | 'select' | 'cancel' | 'create', path = '', name = ''): void {
+    const picker = this.store.getSnapshot().picker
+    if (!picker) return
+    this.bridge.postMessage({ type: 'moe4all-picker-command', command, id: picker.id, path, ...(command === 'create' ? { name } : {}) })
+  }
+
   /** Persist suppression for this exact component/version; manual checks and installation stay available. */
   skip(id: string, version: string): void {
     const state = this.store.getSnapshot(), capabilities = state.capabilities
@@ -116,7 +129,7 @@ export class DesktopController {
     this.bridge.postMessage({ type: 'moe4all-desktop-command', command, ...(command === 'install' ? { version } : {}) })
   }
 
-  /** Keep progress available in Settings when the modal is dismissed. */
+  /** Consume navigation requests without changing update progress. */
   close(): void { this.store.set({ ...this.store.getSnapshot(), open: false }) }
 
   /** Reopen the latest result without starting another check. */

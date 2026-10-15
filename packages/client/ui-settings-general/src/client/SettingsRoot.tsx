@@ -161,7 +161,7 @@ export function SettingsRoot(props: SettingsRootComponentProps) {
           onClose={close}
         />
       )}
-      {renderSlot('settings.notification', {})}
+      {renderSlot('settings.notification', { openSection })}
       {/* Dialog chrome and `#root` inert ownership live inside each step's
           visible branch. A step still deciding (private facts loading)
           renders null, so nothing paints or blocks while it decides. */}
