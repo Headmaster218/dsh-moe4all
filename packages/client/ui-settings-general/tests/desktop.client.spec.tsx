@@ -169,3 +169,67 @@ it('does not interrupt a check for repeated automatic popups and confirms restar
   fireEvent.click(within(confirmation).getByRole('button', { name: 'Restart and apply' }))
   expect(f.bridge.postMessage).toHaveBeenLastCalledWith({ type: 'moe4all-capabilities-command', command: 'restart', confirmed: true })
 })
+
+it('filters actionable components without mixing skipped versions with update history', () => {
+  const f = fixture()
+  const lastUpdate = { from: '0.7.28-moe4all.1', to: '0.7.29-moe4all.1', at: 1792100000000 }
+  f.send({ ...f.caps, snapshot: { ...f.caps.snapshot, settings: { ...f.caps.snapshot.settings, preview: false },
+    plugins: [{ ...f.caps.snapshot.plugins[0], lastUpdate }] } })
+  render(<CapabilitiesSection {...f.props} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Needs attention 1' }))
+  expect(screen.getByRole('listitem', { name: 'Mneme Memory' })).toBeDefined()
+  expect(screen.queryByRole('listitem', { name: 'MoE4All Agent' })).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Skip this version' }))
+  expect(screen.getByText(en['cap.noAttention'])).toBeDefined()
+  fireEvent.click(screen.getByRole('button', { name: 'Update history 1' }))
+  expect(screen.getByText('0.7.28-moe4all.1 → 0.7.29-moe4all.1')).toBeDefined()
+  expect(screen.queryByRole('button', { name: 'Download and prepare Mneme Memory' })).toBeNull()
+})
+
+it('distinguishes a failed metadata check from an unapplied plugin update', () => {
+  const f = fixture()
+  f.send({ ...f.caps, snapshot: { ...f.caps.snapshot, plugins: [{ ...f.caps.snapshot.plugins[0], errorStage: 'check', phase: 'error', error: 'HTTP 503' }] } })
+  render(<CapabilitiesSection {...f.props} />)
+  const card = screen.getByRole('listitem', { name: 'Mneme Memory' })
+  expect(within(card).getByText(en['cap.checkFailedInfo'])).toBeDefined()
+  expect(within(card).queryByText(en['cap.failedInfo'])).toBeNull()
+  fireEvent.click(within(card).getByRole('button', { name: 'Check again' }))
+  expect(f.bridge.postMessage).toHaveBeenLastCalledWith({ type: 'moe4all-capabilities-command', command: 'check' })
+})
+
+it('shows the prepared rollback target instead of implying the latest release will be installed', () => {
+  const f = fixture()
+  f.send({ ...f.caps, snapshot: { ...f.caps.snapshot, pending: true,
+    plugins: [{ ...f.caps.snapshot.plugins[0], phase: 'ready', pending: true, pendingAction: 'rollback', preparedVersion: '0.7.28-moe4all.1' }] } })
+  render(<CapabilitiesSection {...f.props} />)
+  const card = screen.getByRole('listitem', { name: 'Mneme Memory' })
+  expect(within(card).getByText('0.7.28-moe4all.1')).toBeDefined()
+  expect(within(card).queryByText('0.7.30-moe4all.1')).toBeNull()
+  expect(within(card).getByText(en['cap.rollbackReadyInfo'])).toBeDefined()
+  expect(within(card).getByRole('list', { name: 'Update stages' })).toBeDefined()
+  fireEvent.click(screen.getByRole('button', { name: 'Update history 0' }))
+  expect(screen.getByRole('button', { name: 'Restart and apply' })).toBeDefined()
+})
+
+it('allows an explicit retry of the same failed Agent update and never accepts an empty target', () => {
+  const f = fixture()
+  f.send({ ...f.agent, phase: 'error', message: 'Connection interrupted' }); f.send(f.caps)
+  render(<CapabilitiesSection {...f.props} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Retry update MoE4All Agent' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm download' }))
+  expect(f.bridge.postMessage).toHaveBeenLastCalledWith({ type: 'moe4all-desktop-command', command: 'install', version: f.agent.version })
+  f.send({ ...f.agent, phase: 'error', version: '' })
+  const count = f.bridge.postMessage.mock.calls.length
+  f.controller.send('install')
+  expect(f.bridge.postMessage).toHaveBeenCalledTimes(count)
+})
+
+it('keeps a managed Engine update visible but requires stopping it before confirming installation', () => {
+  const f = fixture()
+  f.send({ ...f.caps, snapshot: { ...f.caps.snapshot, engine: { canInstall: true, managed: true, updateAvailable: true,
+    installed: { tag: 'release-1.0.0' }, latest: { tag: 'release-1.0.1' }, runtime: { owned: true } } } })
+  render(<CapabilitiesSection {...f.props} />)
+  const card = screen.getByRole('listitem', { name: 'MoE4All Engine' })
+  expect(within(card).getByText(en['cap.stopEngine'])).toBeDefined()
+  expect(within(card).getByRole<HTMLButtonElement>('button', { name: 'Download and install MoE4All Engine' }).disabled).toBe(true)
+})

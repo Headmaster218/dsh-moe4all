@@ -1,6 +1,6 @@
 /** Agent-owned update presentation inside the existing Settings section. */
 import { useEffect, useState } from 'react'
-import { Button, Tooltip, IconRefreshOutline16, IconDownloadOutline16, IconCloseOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, Tooltip, IconRefreshOutline16, IconDownloadOutline16, IconCloseOutline16, IconDataOutline16, IconPersonalizationOutline16, IconAgentPresetOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import type { DesktopController, DesktopState } from './desktop-controller.ts'
@@ -11,6 +11,7 @@ import css from './Capabilities.module.css'
 type Face = { controller: DesktopController; hooks: { desktop: SnapshotStore<DesktopState> } }
 type Props = InjectFace<Face> & PropsLocale<'settings'>
 type Confirm = { kind: 'install'; row: CapabilityRow } | { kind: 'restart' } | { kind: 'rollback' }
+type View = 'all' | 'attention' | 'history'
 const progressPhases = new Set(['download', 'downloading', 'prepare', 'snapshot', 'dependencies', 'validate', 'verify', 'verifying', 'extract', 'extracting', 'install', 'installing', 'finalizing'])
 const phases: Record<string, SettingsKey> = {
   checking: 'cap.checking', available: 'cap.update', current: 'cap.current', download: 'cap.downloading', downloading: 'cap.downloading',
@@ -29,17 +30,31 @@ const descriptions: Record<string, SettingsKey> = { agent: 'cap.agentInfo', engi
 
 function agentRow(state: DesktopState): CapabilityRow {
   return { id: 'agent', kind: 'agent', zh: 'MoE4All Agent', en: 'MoE4All Agent', installedVersion: state.installedVersion, latestVersion: state.version,
-    updateAvailable: state.phase === 'available', rollbackAvailable: false, pending: false, phase: state.phase, error: state.phase === 'error' ? state.message : '',
+    updateAvailable: state.phase === 'available' || (state.phase === 'error' && !!state.version && state.version !== state.installedVersion),
+    rollbackAvailable: false, pending: false, phase: state.phase, error: state.phase === 'error' ? state.message : '',
+    errorStage: state.version ? 'update' : 'check',
     completed: state.completed, total: state.total, releaseUrl: 'https://github.com/Headmaster218/MoE4All-Agent/releases' }
 }
 
 /** Component status and confirmed update actions share the Settings-owned section. */
 function Content({ state, controller, t }: { state: DesktopState; controller: DesktopController; t: Props['t'] }) {
   const [confirmation, setConfirmation] = useState<Confirm>()
+  const [view, setView] = useState<View>('all')
   const snapshot = state.capabilities
   const busy = !!state.capabilityBusy || progressPhases.has(state.phase) || state.phase === 'checking'
   const pending = snapshot?.pending === true
   const rows = [agentRow(state), ...(snapshot?.engine ? [snapshot.engine] : []), ...(snapshot?.plugins ?? [])]
+  const skipped = (row: CapabilityRow) => !!row.latestVersion && snapshot?.settings.skipped[row.id] === row.latestVersion
+  const needsAttention = (row: CapabilityRow) => !!row.error || row.pending || row.managerUpdateRequired || progressPhases.has(row.phase)
+    || (row.updateAvailable && !skipped(row))
+  const attention = rows.filter(needsAttention)
+  const history = rows.filter(row => row.lastUpdate).sort((a, b) => b.lastUpdate!.at - a.lastUpdate!.at)
+  const visible = view === 'attention' ? attention : rows
+  const activeRow = rows.find(row => row.pending || progressPhases.has(row.phase))
+  const summary: SettingsKey = pending ? 'cap.summaryRestart' : activeRow ? 'cap.summaryRunning'
+    : attention.length ? 'cap.summaryAttention' : busy || snapshot?.checking ? 'cap.checking'
+    : rows.some(row => row.phase === 'idle' || !row.phase) ? 'cap.summaryUnchecked' : 'cap.summaryCurrent'
+  const date = (at: number) => new Intl.DateTimeFormat(t('cap.dateLocale'), { dateStyle: 'medium', timeStyle: 'short' }).format(at)
   const confirmCopy: SettingsKey = confirmation?.kind === 'restart' ? 'cap.confirmRestart' : confirmation?.kind === 'rollback' ? 'cap.confirmRollback'
     : confirmation?.row.kind === 'agent' ? 'cap.confirmAgent' : confirmation?.row.kind === 'engine' ? 'cap.confirmEngine' : 'cap.confirmPlugin'
   const confirm = () => {
@@ -60,40 +75,73 @@ function Content({ state, controller, t }: { state: DesktopState; controller: De
       <Button variant="primary" disabled={busy} onClick={confirm}>{t(confirmation.kind === 'restart' ? 'cap.restart' : confirmation.kind === 'rollback' ? 'cap.rollback' : 'cap.confirmDownload')}</Button></div>
   </section>
   return <div className={css.center}>
+    <div className={css.overview} role="status">
+      <div><div className={css.overviewTitle}>{t(summary)}</div>
+        <p className={css.overviewDetail}>{pending ? t(activeRow?.pendingAction === 'rollback' ? 'cap.rollbackReadyInfo' : 'cap.preparedInfo') : activeRow ? name(activeRow)
+          : attention.length ? `${attention.length} ${t('cap.toReview')}` : t(snapshot?.settings.preview ? 'cap.previewChannel' : 'cap.stableChannel')}</p></div>
+      <Button variant="outline" size="sm" className={css.checkButton} disabled={busy} onClick={() => controller.command('check')}>
+        <IconRefreshOutline16 />{t('cap.check')}</Button>
+    </div>
     <div className={css.toolbar}>
-      <div className={css.preferences}>
+      <div className={css.filters} role="group" aria-label={t('cap.views')}>
+        {(['all', 'attention', 'history'] as const).map(id => <button type="button" key={id} aria-pressed={view === id}
+          onClick={() => setView(id)}>{t(`cap.view.${id}`)}{' '}<span>{id === 'all' ? rows.length : id === 'attention' ? attention.length : history.length}</span></button>)}
+      </div>
+      <details className={css.settings}><summary>{t('cap.updateSettings')}</summary><div className={css.preferences}>
         <label><input type="checkbox" checked={snapshot?.settings.autoCheck ?? true} disabled={busy || !snapshot}
           onChange={event => controller.command('settings', { autoCheck: event.target.checked, preview: snapshot?.settings.preview ?? false })} />{t('cap.auto')}</label>
         <label><input type="checkbox" checked={snapshot?.settings.preview ?? false} disabled={busy || !snapshot}
           onChange={event => controller.command('settings', { autoCheck: snapshot?.settings.autoCheck ?? true, preview: event.target.checked })} />{t('cap.preview')}</label>
-      </div>
-      <Tooltip label={t('cap.check')} side="bottom"><span className={css.iconWrap}><Button variant="outline" size="sm" className={css.iconButton} aria-label={t('cap.check')}
-        disabled={busy} onClick={() => controller.command('check')}><IconRefreshOutline16 /></Button></span></Tooltip>
+      </div></details>
     </div>
     {!snapshot && <p className={css.hint} role="status">{t('cap.loading')}</p>}
     {state.capabilityError && <p className={css.error} role="alert">{state.capabilityError}</p>}
+    {view === 'history' ? <div className={css.history}>
+      <p className={css.hint}>{t('cap.historyScope')}</p>
+      {history.length === 0 && <p className={css.empty}>{t('cap.noHistory')}</p>}
+      <ul className={css.historyList}>{history.map(row => <li key={row.id} className={css.historyRow}>
+        <div><strong>{name(row)}</strong><p>{row.lastUpdate!.kind === 'rollback' && <span>{t('cap.rolledBack')} · </span>}{row.lastUpdate!.from} → {row.lastUpdate!.to}</p></div>
+        <time dateTime={new Date(row.lastUpdate!.at).toISOString()}>{date(row.lastUpdate!.at)}</time>
+        {row.rollbackAvailable && !pending && <Button variant="outline" size="sm" disabled={busy} onClick={() => setConfirmation({ kind: 'rollback' })}>
+          <IconRefreshOutline16 />{t('cap.rollback')}</Button>}
+      </li>)}</ul>
+    </div> : <>
+    {view === 'attention' && visible.length === 0 && <p className={css.empty} role="status">{t('cap.noAttention')}</p>}
     <ul className={css.list}>
-      {rows.map(row => {
-        const skipped = snapshot?.settings.skipped[row.id] === row.latestVersion && !!row.latestVersion
+      {visible.map(row => {
+        const isSkipped = skipped(row)
         const active = progressPhases.has(row.phase)
-        const download = row.updateAvailable && !pending && !busy && !active && !row.managerUpdateRequired
+        const download = row.updateAvailable && !pending && !busy && !active && !row.managerUpdateRequired && !row.requiresStop
         const progress = row.total > 0 ? Math.min(100, row.completed * 100 / row.total) : undefined
-        const phase = row.error ? (row.kind === 'plugin' ? 'cap.failed' : 'cap.error') : row.pending ? 'cap.ready' : active ? phases[row.phase]! : skipped && row.updateAvailable ? 'cap.skipped' : row.updateAvailable ? 'cap.update' : phases[row.phase] ?? 'cap.idle'
+        const checkFailed = !!row.error && row.errorStage === 'check'
+        const phase = row.error ? (checkFailed ? 'cap.checkFailed' : row.kind === 'plugin' ? 'cap.failed' : 'cap.error')
+          : row.pending ? 'cap.ready' : active ? phases[row.phase]! : row.externallyManaged ? 'cap.external'
+          : isSkipped && row.updateAvailable ? 'cap.skipped' : row.updateAvailable ? 'cap.update'
+          : !row.installedVersion ? 'cap.none' : phases[row.phase] ?? 'cap.idle'
         const url = /^https:\/\/github\.com\/Headmaster218\/[a-z0-9_-]+\/releases(?:\/tag\/[a-z0-9.+-]+)?$/iu.test(row.releaseUrl) ? row.releaseUrl : undefined
         const hint: SettingsKey | undefined = row.managerUpdateRequired ? 'cap.managerRequired' : row.requiresStop ? 'cap.stopEngine'
-          : row.externallyManaged ? 'cap.externalInfo' : row.pending ? 'cap.preparedInfo'
-          : row.error && row.kind === 'plugin' ? 'cap.failedInfo' : active && row.kind === 'plugin' ? 'cap.preparingInfo'
+          : row.externallyManaged ? 'cap.externalInfo' : row.pending ? row.pendingAction === 'rollback' ? 'cap.rollbackReadyInfo' : 'cap.preparedInfo'
+          : checkFailed ? 'cap.checkFailedInfo' : row.error && row.kind === 'plugin' ? 'cap.failedInfo' : active && row.kind === 'plugin' ? 'cap.preparingInfo'
           : undefined
-        return <li className={css.item} key={row.id} data-capability={row.id} aria-label={name(row)}>
-          <div className={css.group}>{t(row.kind === 'agent' ? 'cap.agent' : row.kind === 'engine' ? 'cap.engine' : 'cap.plugins')}</div>
+        const step = row.pending ? 3 : ['prepare', 'snapshot', 'dependencies', 'validate', 'extract', 'extracting', 'install', 'installing', 'finalizing'].includes(row.phase) ? 2
+          : ['verify', 'verifying'].includes(row.phase) ? 1 : 0
+        return <li className={css.item} key={row.id} data-capability={row.id} data-attention={needsAttention(row) || undefined} aria-label={name(row)}>
+          <div className={css.group}>{row.kind === 'agent' ? <IconAgentPresetOutline16 /> : row.kind === 'engine' ? <IconDataOutline16 /> : <IconPersonalizationOutline16 />}
+            {t(row.kind === 'agent' ? 'cap.agent' : row.kind === 'engine' ? 'cap.engine' : 'cap.plugins')}</div>
           <div className={css.row}>
             <div className={css.name}>{name(row)}</div>
-            <span className={row.error ? css.errorStatus : row.updateAvailable && !skipped ? css.available : css.status}>{t(phase)}</span>
+            <span className={row.error ? css.errorStatus : row.pending || row.updateAvailable && !isSkipped ? css.available : css.status}>{t(phase)}</span>
           </div>
           {descriptions[row.id] && <p className={css.description}>{t(descriptions[row.id]!)}</p>}
           <div className={css.versions}>
-              <span>{row.installedVersion || t('cap.none')}</span>{row.latestVersion && row.latestVersion !== row.installedVersion && <><span aria-hidden="true">→</span><span>{row.latestVersion}</span></>}
+              <span className={css.versionLabel}>{t('cap.installed')}</span><span>{row.installedVersion || t('cap.none')}</span>
+              {(row.pending && row.preparedVersion ? row.preparedVersion !== row.installedVersion : row.latestVersion && row.latestVersion !== row.installedVersion) && <>
+                <span className={css.versionLabel}>{t(row.pending ? 'cap.preparedVersion' : 'cap.available')}</span><span>{row.pending && row.preparedVersion ? row.preparedVersion : row.latestVersion}</span></>}
           </div>
+          {(active || row.pending) && row.kind === 'plugin' && <ol className={css.steps} aria-label={t('cap.updateStages')}>
+            {(['cap.downloading', 'cap.verifying', 'cap.stagePrepare', 'cap.stageApply'] as const).map((key, index) => <li key={key}
+              aria-current={index === step ? 'step' : undefined} data-past={index < step || undefined}>{t(key)}</li>)}
+          </ol>}
           {active && <div className={css.progress} role="status"><progress max="100" value={progress} aria-label={`${name(row)} ${t(phase)}`} />
             <span>{row.phase === 'snapshot' ? `${t(phase)} · ${row.completed} / ${row.total}`
               : row.phase === 'validate' ? `${t(phase)} · ${row.completed} ${t('cap.files')}`
@@ -105,8 +153,7 @@ function Content({ state, controller, t }: { state: DesktopState; controller: De
           </div>}
           {hint && <p className={row.error ? css.error : css.hint} role="status">{t(hint)}</p>}
           {row.error && <details className={css.details}><summary>{t('cap.details')}</summary><p className={css.error}>{row.error}</p></details>}
-          {row.lastUpdate && <details className={css.details}><summary>{t('cap.lastUpdate')}</summary>
-            <p>{row.lastUpdate.from} → {row.lastUpdate.to}<br />{new Date(row.lastUpdate.at).toLocaleString()}</p></details>}
+          {row.lastUpdate && !active && !row.pending && <p className={css.historyStamp}>{t(row.lastUpdate.kind === 'rollback' ? 'cap.rolledBackAt' : 'cap.appliedAt')} <time dateTime={new Date(row.lastUpdate.at).toISOString()}>{date(row.lastUpdate.at)}</time></p>}
           <div className={css.footer}>
             {url && <a className={css.release} href={url} target="_blank" rel="noreferrer">{t('cap.release')}</a>}
             <div className={css.actions}>
@@ -116,18 +163,20 @@ function Content({ state, controller, t }: { state: DesktopState; controller: De
               </>}
               {row.rollbackAvailable && !pending && <Tooltip label={t('cap.rollback')} side="top"><span className={css.iconWrap}><Button variant="ghost" size="sm" className={css.iconButton}
                 aria-label={t('cap.rollback')} disabled={busy} onClick={() => setConfirmation({ kind: 'rollback' })}><IconRefreshOutline16 /></Button></span></Tooltip>}
-              {row.updateAvailable && !row.pending && !active && !row.managerUpdateRequired && <>
+              {(checkFailed || row.error && !row.updateAvailable) && <Button variant="outline" size="sm" disabled={busy}
+                onClick={() => controller.command('check')}><IconRefreshOutline16 />{t('cap.retryCheck')}</Button>}
+              {row.updateAvailable && !checkFailed && !row.pending && !active && !row.managerUpdateRequired && <>
                 <Tooltip label={t(row.kind === 'plugin' ? 'cap.download' : 'cap.agentDownload')} side="top"><span className={css.iconWrap}><Button variant="outline" size="sm" className={css.downloadButton}
                   aria-label={`${t(row.error ? 'cap.retry' : row.kind === 'plugin' ? 'cap.download' : 'cap.agentDownload')} ${name(row)}`} disabled={!download}
                   onClick={() => setConfirmation({ kind: 'install', row })}><IconDownloadOutline16 />{t(row.error ? 'cap.retry' : row.kind === 'plugin' ? 'cap.download' : 'cap.agentDownload')}</Button></span></Tooltip>
-                {!skipped && <Button variant="ghost" size="sm" className={css.skip} disabled={busy} onClick={() => controller.skip(row.id, row.latestVersion)}>{t('cap.skip')}</Button>}
+                {!isSkipped && <Button variant="ghost" size="sm" className={css.skip} disabled={busy} onClick={() => controller.skip(row.id, row.latestVersion)}>{t('cap.skip')}</Button>}
               </>}
             </div>
           </div>
         </li>
       })}
-    </ul>
-    {pending && !rows.some(row => row.pending) && <div className={css.pending} role="status"><span>{t('cap.pending')}</span><div className={css.pendingActions}>
+    </ul></>}
+    {pending && (view === 'history' || !rows.some(row => row.pending)) && <div className={css.pending} role="status"><span>{t('cap.pending')}</span><div className={css.pendingActions}>
       <Button variant="ghost" size="sm" disabled={busy} onClick={() => controller.command('cancel')}>{t('cap.cancel')}</Button>
       <Button variant="primary" size="sm" disabled={busy} onClick={() => setConfirmation({ kind: 'restart' })}>{t('cap.restart')}</Button>
     </div></div>}

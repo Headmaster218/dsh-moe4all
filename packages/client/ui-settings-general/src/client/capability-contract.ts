@@ -18,7 +18,10 @@ export interface CapabilityRow {
   externallyManaged?: boolean
   requiresStop?: boolean
   checkedAt?: number
-  lastUpdate?: { from: string; to: string; at: number }
+  lastUpdate?: { from: string; to: string; at: number; kind?: 'rollback' }
+  errorStage?: 'check' | 'update'
+  preparedVersion?: string
+  pendingAction?: 'rollback' | 'update'
 }
 
 /** Validated subset of the process-owned persistent state. */
@@ -51,7 +54,9 @@ export function capabilitySnapshot(value: unknown): CapabilitySnapshot | undefin
       latestVersion: plugin.latestVersion, phase: text(plugin.phase), error: text(plugin.error), releaseUrl: text(plugin.releaseUrl),
       updateAvailable: plugin.updateAvailable, rollbackAvailable: plugin.rollbackAvailable === true, completed: count(plugin.completed), total: count(plugin.total), pending: plugin.pending === true,
       checkedAt: count(plugin.checkedAt), ...(lastUpdate && typeof lastUpdate.from === 'string' && typeof lastUpdate.to === 'string' && count(lastUpdate.at) > 0
-        ? { lastUpdate: { from: lastUpdate.from, to: lastUpdate.to, at: count(lastUpdate.at) } } : {}) })
+        ? { lastUpdate: { from: lastUpdate.from, to: lastUpdate.to, at: count(lastUpdate.at), ...(lastUpdate.kind === 'rollback' ? { kind: 'rollback' as const } : {}) } } : {}),
+      preparedVersion: text(plugin.preparedVersion), pendingAction: plugin.pendingAction === 'rollback' ? 'rollback' : 'update',
+      ...(plugin.errorStage === 'check' || plugin.errorStage === 'update' ? { errorStage: plugin.errorStage } : {}) })
   }
   const engine = object(row.engine), installed = object(engine?.installed), latest = object(engine?.latest), runtime = object(engine?.runtime), install = object(engine?.install)
   const skipped = Object.fromEntries(Object.entries(object(settings.skipped) ?? {}).filter(([key, entry]) => /^[a-z0-9-]{1,80}$/u.test(key) && typeof entry === 'string')) as Record<string, string>
@@ -59,8 +64,9 @@ export function capabilitySnapshot(value: unknown): CapabilitySnapshot | undefin
     checking: row.checking === true, pending: row.pending,
     ...(engine ? { engine: { id: 'engine', kind: 'engine' as const, zh: 'MoE4All 引擎', en: 'MoE4All Engine',
       installedVersion: text(installed?.tag), latestVersion: text(latest?.tag), phase: text(engine.phase), error: text(engine.error),
-      updateAvailable: engine.canInstall === true && runtime?.owned !== true && !!latest && (engine.updateAvailable === true || !installed),
+      updateAvailable: engine.canInstall === true && !!latest && (engine.updateAvailable === true || !installed),
       rollbackAvailable: false, pending: false, releaseUrl: 'https://github.com/Headmaster218/MoE4All/releases',
       completed: count(install?.downloadedBytes), total: count(install?.totalBytes), managerUpdateRequired: engine.managerUpdateRequired === true,
-      externallyManaged: runtime?.mode === 'connect' || (!!runtime?.executable && engine.managed !== true), requiresStop: runtime?.owned === true } } : {}) }
+      externallyManaged: runtime?.mode === 'connect' || (!!runtime?.executable && engine.managed !== true), requiresStop: runtime?.owned === true,
+      ...(engine.error ? { errorStage: install?.error ? 'update' as const : 'check' as const } : {}) } } : {}) }
 }

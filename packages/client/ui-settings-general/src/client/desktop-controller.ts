@@ -122,7 +122,8 @@ export class DesktopController {
   send(command: DesktopCommand, version?: string): void {
     if (command === 'check') this.store.set({ ...this.store.getSnapshot(), phase: 'checking', open: true, message: '' })
     if (command === 'install') {
-      if (this.store.getSnapshot().phase !== 'available' || (version !== undefined && this.store.getSnapshot().version !== version)) return
+      const state = this.store.getSnapshot()
+      if (!['available', 'error'].includes(state.phase) || !state.version || (version !== undefined && state.version !== version)) return
       version ??= this.store.getSnapshot().version
       this.store.set({ ...this.store.getSnapshot(), phase: 'download', open: true, completed: 0, message: '' })
     }

@@ -74,7 +74,7 @@
   position: relative;
   z-index: 1;
   display: flex;
-  width: 800px;
+  width: 1040px;
   height: min(800px, calc(100vh - 48px));
   max-width: calc(100vw - 48px);
   border-radius: 24px;
