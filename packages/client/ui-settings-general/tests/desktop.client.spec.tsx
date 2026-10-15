@@ -157,6 +157,16 @@ it('navigates new-version notices into Settings without mounting another modal',
   expect(f.props.openSection).toHaveBeenCalledTimes(1)
 })
 
+it('does not treat a first Engine installation as a new-version notification', () => {
+  const f = fixture()
+  const snapshot = { ...f.caps.snapshot, plugins: [], engine: { canInstall: true, latest: { tag: 'release-1.0.2' }, runtime: { mode: 'prompt', owned: false } } }
+  f.send({ ...f.caps, snapshot })
+  expect(f.controller.store.getSnapshot().capabilities?.engine?.updateAvailable).toBe(true)
+  expect(f.controller.store.getSnapshot().open).toBe(false)
+  f.send({ ...f.caps, snapshot: { ...snapshot, engine: { ...snapshot.engine, installed: { tag: 'release-1.0.1' }, updateAvailable: true } } })
+  expect(f.controller.store.getSnapshot().open).toBe(true)
+})
+
 it('does not interrupt a check for repeated automatic popups and confirms restart separately', () => {
   const f = fixture()
   f.send({ ...f.caps, snapshot: { ...f.caps.snapshot, checking: true } })

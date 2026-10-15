@@ -85,7 +85,7 @@ export class DesktopController {
     const state = this.store.getSnapshot(), snapshot = state.capabilities
     if (!snapshot || snapshot.checking) return
     const updates = [...snapshot.plugins, ...(snapshot.engine ? [snapshot.engine] : [])]
-      .filter(row => row.updateAvailable).map(row => [row.id, row.latestVersion])
+      .filter(row => row.updateAvailable && (row.kind !== 'engine' || !!row.installedVersion)).map(row => [row.id, row.latestVersion])
     if (state.phase === 'available') updates.push(['agent', state.version])
     let open = state.open
     for (const [id, version] of updates) {
