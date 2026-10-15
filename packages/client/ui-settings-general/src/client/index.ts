@@ -25,7 +25,7 @@ import { GeneralSection } from './GeneralSection.tsx'
 import { SettingsDocumentAction } from './SettingsDocumentAction.tsx'
 import type { SettingsDocumentActionInjected } from './SettingsDocumentAction.tsx'
 import { SettingsDocumentStore } from './settings-document-store.ts'
-import { DesktopSettingsRow, DesktopUpdateDialog } from './DesktopSettingsRow.tsx'
+import { CapabilitiesSection, CapabilitiesDialog } from './Capabilities.tsx'
 import { DesktopController, desktopBridge } from './desktop-controller.ts'
 import { en, zh, type SettingsKey } from './locales.ts'
 
@@ -173,14 +173,14 @@ export function apply(ctx: ClientContext): void {
   if (bridge !== undefined) {
     const desktop = new DesktopController(bridge)
     ctx.effect(() => () => { desktop.dispose() }, 'ui-settings-general: desktop update messages')
-    ctx.slots.inject('settings.general.item', () => ctx.slots.register({
-      name: 'settings.general.item', id: 'desktop-updates', order: 90, locale: NS,
+    ctx.slots.inject('settings.section', () => ctx.slots.register({
+      name: 'settings.section', id: 'capabilities', order: 17, locale: NS, label: () => t('cap.title'),
       inject: () => ({ controller: desktop, hooks: { desktop: desktop.store } }),
-    }, DesktopSettingsRow))
+    }, CapabilitiesSection))
     ctx.slots.inject('settings.notification', () => ctx.slots.register({
       name: 'settings.notification', id: 'desktop-updates', locale: NS,
       inject: () => ({ controller: desktop, hooks: { desktop: desktop.store } }),
-    }, DesktopUpdateDialog))
+    }, CapabilitiesDialog))
   }
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',

@@ -1,7 +1,9 @@
 /** Shell chrome and General-nav dictionaries; feature rows own their copy. */
+import { capabilityZh, capabilityEn } from './capability-locales.ts'
 
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {
+  ...capabilityZh,
   'trigger': '设置',
   'title': '设置',
   'close': '关闭',
@@ -9,6 +11,7 @@ export const zh = {
   'openDocument.error': '无法打开配置文件',
   'general.nav': '通用设置',
   'desktop.title': 'MoE4All Agent 更新',
+  'capabilities.title': '能力中心', 'capabilities.open': '打开能力中心',
   'desktop.check': '检查更新', 'desktop.progress': '查看进度', 'desktop.viewUpdate': '查看更新',
   'desktop.idle': '按需检查新版本', 'desktop.checking': '正在检查更新',
   'desktop.available': '发现新版本', 'desktop.current': '已是最新版本',
@@ -25,6 +28,7 @@ export type SettingsKey = keyof typeof zh
 
 /** English dictionary, checked complete against the zh key set. */
 export const en = {
+  ...capabilityEn,
   'trigger': 'Settings',
   'title': 'Settings',
   'close': 'Close',
@@ -32,6 +36,7 @@ export const en = {
   'openDocument.error': 'Could not open configuration file',
   'general.nav': 'General',
   'desktop.title': 'MoE4All Agent updates',
+  'capabilities.title': 'Capabilities', 'capabilities.open': 'Open Capabilities',
   'desktop.check': 'Check updates', 'desktop.progress': 'View progress', 'desktop.viewUpdate': 'View update',
   'desktop.idle': 'Check for a new version', 'desktop.checking': 'Checking for updates',
   'desktop.available': 'A new version is available', 'desktop.current': 'You are up to date',

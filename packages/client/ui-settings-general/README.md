@@ -10,7 +10,7 @@ A loopback browser loads the provider's `hasDocument` capability through `settin
 
 The Host half registers `ui-onboarding` in the user-settings seam. The welcome step contributed by `ui-settings-models` reads and writes its `welcomeNoticeVersion` through the existing public settings boundary; the shell itself remains policy-free.
 
-MoE4All desktop deployments add an update row to General and a persistent `settings.notification` outlet. A page-scoped controller validates native messages and drives the shared DSH Modal; the native updater retains checking, download and installation authority. Installation requires a user click; notifications never install automatically. Dismissed progress can be reopened from Settings. Ordinary browsers expose no desktop updater, and subscriptions are disposed with the plugin.
+MoE4All desktop deployments contribute Capabilities between Plugins and MoE4All in Settings, plus a persistent `settings.notification` outlet for the same in-page DSH Modal. A page-scoped controller validates native messages, opens available updates automatically, and persists exact component/version skips through the native owner. Skips suppress automatic reminders, not manual installation or later versions. Agent, maintained plugins and Engine retain independent update executors; downloads, installation and restart require explicit confirmation. Dismissed progress remains available in Settings. Ordinary browsers expose no desktop updater, and subscriptions are disposed with the plugin.
 
 ## Model Experience
 

@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-10-15-moe4all-appearance.md
-2026-10-15-moe4all-appearance.md: 90b0e3a5e768046e2dfce883851a0aef469db7c0
-2026-10-15-moe4all-appearance.zh.md: 4b371f0befbf39dd0c6cd6194a2dd7aceffb62e7
+2026-10-15-moe4all-appearance.md: 11ed9e35567fe0818e5053e5623fc2c5392b4a8f
+2026-10-15-moe4all-appearance.zh.md: 8bee8050b19862b2b6e70c288753c211b9a2db87
