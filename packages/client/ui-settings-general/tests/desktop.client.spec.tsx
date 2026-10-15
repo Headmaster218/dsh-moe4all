@@ -67,6 +67,9 @@ it('shows download progress, can dismiss it and reopen the same state without an
   act(() => f.controller.open())
   expect(screen.getByRole('progressbar')).toBeDefined()
   expect(f.bridge.postMessage).toHaveBeenCalledTimes(2)
+  act(() => { f.controller.close(); f.send({ ...f.agent, phase: 'error', message: 'Download interrupted', open: true }) })
+  expect(screen.getByRole('dialog', { name: 'Capabilities' })).toBeDefined()
+  expect(screen.getByText('Download interrupted')).toBeDefined()
 })
 
 it('persists exact-version skips, suppresses repeated popup and notifies again for a newer version', () => {
