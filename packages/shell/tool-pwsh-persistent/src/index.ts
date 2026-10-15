@@ -29,7 +29,7 @@ const DEFAULT_DESCRIPTION = 'Run commands in a persistent PowerShell shell. Stat
 interface ResolvedConfig {
   backendType: string
   timeoutMs: number
-  maxOutputChars: number
+  maxOutputBytes: number
   description: string
 }
 
@@ -54,11 +54,24 @@ interface PersistentShells {
   reset(owner: Agent, reason: string): Promise<void>
 }
 
-function maybeTruncate(content: string, maxOutputChars: number, incomplete = false): string {
-  if (content.length <= maxOutputChars && !incomplete) return content
-  return content.length <= maxOutputChars
+function utf8Prefix(content: string, maxBytes: number): string {
+  let bytes = 0
+  let end = 0
+  for (const character of content) {
+    const size = Buffer.byteLength(character)
+    if (bytes + size > maxBytes) break
+    bytes += size
+    end += character.length
+  }
+  return content.slice(0, end)
+}
+
+function maybeTruncate(content: string, maxOutputBytes: number, incomplete = false): string {
+  const fits = Buffer.byteLength(content) <= maxOutputBytes
+  if (fits && !incomplete) return content
+  return fits
     ? content + TRUNCATED_MESSAGE
-    : content.slice(0, maxOutputChars) + TRUNCATED_MESSAGE
+    : utf8Prefix(content, maxOutputBytes) + TRUNCATED_MESSAGE
 }
 
 function markers(): CommandMarkers {
@@ -192,8 +205,8 @@ function retainedScrollback(
   return { text: pages.join('\n'), truncated }
 }
 
-function renderCaptured(output: CapturedOutput, maxOutputChars: number): string {
-  const rendered = maybeTruncate(output.text, maxOutputChars, output.incomplete)
+function renderCaptured(output: CapturedOutput, maxOutputBytes: number): string {
+  const rendered = maybeTruncate(output.text, maxOutputBytes, output.incomplete)
   const withPrefix = output.incomplete && output.text.length > 0
     ? LOST_PREFIX_MESSAGE + rendered
     : rendered
@@ -244,7 +257,7 @@ async function respondToSessionExit(
   await shells.reset(owner, 'persistent pwsh shell exited')
   return [
     renderShellExitStatus(
-      renderCaptured(partialOutput(snapshot, marker, wrapped, fallback, fallbackTruncated), config.maxOutputChars),
+      renderCaptured(partialOutput(snapshot, marker, wrapped, fallback, fallbackTruncated), config.maxOutputBytes),
       status.exitCode,
       status.signal,
     ),
@@ -383,7 +396,7 @@ async function executeCommand(
       const snapshot = retainedScrollback(ctx, owner, id, latest)
       const partial = renderCaptured(
         partialOutput(snapshot, marker, wrapped, fallback, fallbackTruncated),
-        config.maxOutputChars,
+        config.maxOutputBytes,
       )
       await shells.reset(owner, 'persistent pwsh command timed out')
       return [
@@ -399,7 +412,7 @@ async function executeCommand(
     }
     if (latest.text.includes(marker.end)) {
       const complete = commandOutput(retainedScrollback(ctx, owner, id, latest), marker, wrapped)
-      if (complete !== undefined) return renderCaptured(complete, config.maxOutputChars)
+      if (complete !== undefined) return renderCaptured(complete, config.maxOutputBytes)
     }
     if (result.sessionStatus.kind === 'exited') {
       return await respondToSessionExit(
@@ -410,7 +423,7 @@ async function executeCommand(
       const snapshot = retainedScrollback(ctx, owner, id, latest)
       return renderCaptured(
         partialOutput(snapshot, marker, wrapped, fallback, fallbackTruncated),
-        config.maxOutputChars,
+        config.maxOutputBytes,
       )
     }
     await pause()
@@ -474,7 +487,9 @@ export interface Config {
   backendType?: string
   /** Wall-clock limit for one command (default 300000). */
   timeoutMs?: number
-  /** Maximum returned command-output characters before clipping (default 16000). */
+  /** Maximum returned command-output bytes before clipping (default 4000). */
+  maxOutputBytes?: number
+  /** Deprecated character cap retained as a configuration compatibility alias. */
   maxOutputChars?: number
   /** Model-facing tool description; deployments may describe their environment. */
   description?: string
@@ -484,7 +499,8 @@ export interface Config {
 export const Config: z<Config> = z.object({
   backendType: z.string().default('shell'),
   timeoutMs: z.number().default(300_000),
-  maxOutputChars: z.number().default(16_000),
+  maxOutputBytes: z.number(),
+  maxOutputChars: z.number().deprecated(),
   description: z.string().default(DEFAULT_DESCRIPTION),
 })
 
@@ -493,7 +509,7 @@ export function apply(ctx: Context, config: Config): void {
   const resolved: ResolvedConfig = {
     backendType: config.backendType ?? 'shell',
     timeoutMs: config.timeoutMs ?? 300_000,
-    maxOutputChars: config.maxOutputChars ?? 16_000,
+    maxOutputBytes: config.maxOutputBytes ?? config.maxOutputChars ?? 4_000,
     description: config.description ?? DEFAULT_DESCRIPTION,
   }
   if (resolved.backendType.trim().length === 0) {
@@ -502,8 +518,8 @@ export function apply(ctx: Context, config: Config): void {
   if (!Number.isSafeInteger(resolved.timeoutMs) || resolved.timeoutMs <= 0) {
     throw new Error('tool-pwsh-persistent: timeoutMs must be a positive safe integer')
   }
-  if (!Number.isSafeInteger(resolved.maxOutputChars) || resolved.maxOutputChars <= 0) {
-    throw new Error('tool-pwsh-persistent: maxOutputChars must be a positive safe integer')
+  if (!Number.isSafeInteger(resolved.maxOutputBytes) || resolved.maxOutputBytes <= 0) {
+    throw new Error('tool-pwsh-persistent: maxOutputBytes must be a positive safe integer')
   }
   if (resolved.description.trim().length === 0) {
     throw new Error('tool-pwsh-persistent: description must be non-empty')

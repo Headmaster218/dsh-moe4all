@@ -132,7 +132,7 @@ export class PwshLocalExecutor extends ShellExecutor {
     cwd: z.string(),
     timeoutMs: z.number().default(120_000),
     maxTimeoutMs: z.number().default(600_000),
-    maxOutputBytes: z.number().default(64_000),
+    maxOutputBytes: z.number().default(4_000),
     maxSpillBytes: z.number().default(DEFAULT_MAX_SPILL_BYTES),
     graceMs: z.number().default(DEFAULT_GRACE_MS),
     pwshPath: z.string(),

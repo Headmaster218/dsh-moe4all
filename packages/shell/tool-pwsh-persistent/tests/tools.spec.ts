@@ -86,6 +86,7 @@ type StubMode =
   | 'end-on-abort'
   | 'idle-then-normal'
   | 'large'
+  | 'unicode'
   | 'nonzero'
   | 'torn-status'
   | 'finish-torn-status'
@@ -216,6 +217,7 @@ class StubTerminalSession implements TerminalBackendSession {
     }
     const commandOutput = this.mode === 'large'
       ? 'x'.repeat(100)
+      : this.mode === 'unicode' ? '中'.repeat(2_000)
       : this.mode === 'nonzero' ? ''
         : this.mode === 'prompt-collision' ? this.motd
           : 'hello from stub'
@@ -392,7 +394,7 @@ describe('tool-pwsh-persistent', () => {
   it('handles inferred idle, prompt fallback, shell exit, clipping, and cleanup', async () => {
     const { ctx, owner, stub, fiber } = await setup({
       backendType: 'stub',
-      maxOutputChars: 10,
+      maxOutputBytes: 10,
     })
     await call(ctx, owner, 'warm up')
     const session = stub.sessions[0]!
@@ -452,8 +454,19 @@ describe('tool-pwsh-persistent', () => {
     expect(stub.sessions[2]?.closed).toEqual(['external cleanup'])
   })
 
+  it('defaults model-facing output to 4000 UTF-8 bytes without splitting a character', async () => {
+    const { ctx, owner, stub } = await setup({ backendType: 'stub' })
+    await call(ctx, owner, 'warm up')
+    stub.sessions[0]!.mode = 'unicode'
+    const result = text(await call(ctx, owner, 'unicode'))
+    const prefix = result.split('<response clipped>', 1)[0]!
+    expect(Buffer.byteLength(prefix)).toBeLessThanOrEqual(4_000)
+    expect(Buffer.byteLength(prefix)).toBeGreaterThan(3_990)
+    expect(prefix).not.toContain('\uFFFD')
+  })
+
   it('waits for status digits after a torn completion marker', async () => {
-    const { ctx, owner, stub } = await setup({ backendType: 'stub', maxOutputChars: 1_000 })
+    const { ctx, owner, stub } = await setup({ backendType: 'stub', maxOutputBytes: 1_000 })
     await call(ctx, owner, 'warm up')
     stub.sessions[0]!.mode = 'torn-status'
     stub.sessions[0]!.scrollback = ''
@@ -470,7 +483,7 @@ describe('tool-pwsh-persistent', () => {
   })
 
   it('marks a short missing-prefix result and tolerates exhausted scrollback pages', async () => {
-    const { ctx, owner, stub } = await setup({ backendType: 'stub', maxOutputChars: 1_000 })
+    const { ctx, owner, stub } = await setup({ backendType: 'stub', maxOutputBytes: 1_000 })
     await call(ctx, owner, 'warm up')
     const session = stub.sessions[0]!
 
@@ -490,7 +503,7 @@ describe('tool-pwsh-persistent', () => {
   })
 
   it('assembles retained output across backward scrollback pages', async () => {
-    const { ctx, owner, stub } = await setup({ backendType: 'stub', maxOutputChars: 1_000 })
+    const { ctx, owner, stub } = await setup({ backendType: 'stub', maxOutputBytes: 1_000 })
     await call(ctx, owner, 'warm up')
     const session = stub.sessions[0]!
     session.mode = 'paged-scrollback'
@@ -500,7 +513,7 @@ describe('tool-pwsh-persistent', () => {
   })
 
   it('sanitizes a prompt fallback reached after multiple polling rounds', async () => {
-    const { ctx, owner, stub } = await setup({ backendType: 'stub', maxOutputChars: 1_000 })
+    const { ctx, owner, stub } = await setup({ backendType: 'stub', maxOutputBytes: 1_000 })
     await call(ctx, owner, 'warm up')
     const session = stub.sessions[0]!
     session.mode = 'prompt-after-idle'
@@ -513,7 +526,7 @@ describe('tool-pwsh-persistent', () => {
   })
 
   it('does not attribute old scrollback truncation to a complete current command', async () => {
-    const { ctx, owner, stub } = await setup({ backendType: 'stub', maxOutputChars: 1_000 })
+    const { ctx, owner, stub } = await setup({ backendType: 'stub', maxOutputBytes: 1_000 })
     await call(ctx, owner, 'warm up')
     stub.sessions[0]!.historyTruncated = true
     const result = text(await call(ctx, owner, 'short command'))
@@ -627,8 +640,8 @@ describe('tool-pwsh-persistent', () => {
       ToolPwshPersistent.apply(new Context(), { timeoutMs: 0 })
     }).toThrow('timeoutMs must be a positive safe integer')
     expect(() => {
-      ToolPwshPersistent.apply(new Context(), { maxOutputChars: 0 })
-    }).toThrow('maxOutputChars must be a positive safe integer')
+      ToolPwshPersistent.apply(new Context(), { maxOutputBytes: 0 })
+    }).toThrow('maxOutputBytes must be a positive safe integer')
     expect(() => {
       ToolPwshPersistent.apply(new Context(), { description: ' ' })
     }).toThrow('description must be non-empty')
