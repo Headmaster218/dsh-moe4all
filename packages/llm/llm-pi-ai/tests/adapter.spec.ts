@@ -188,7 +188,9 @@ describe('PiAiAdapter provider routing', () => {
     }))
 
     for (const reasoningEffort of [undefined, ReasoningEffortId('xhigh')]) {
-      const title = await assemble(ctx, { provider: 'moe4all', model, messages: [], purpose: 'session-title', maxTokens: 64, reasoningEffort })
+      const title = await assemble(ctx, { provider: 'moe4all', model, messages: [], purpose: 'session-title', maxTokens: 64,
+        ...reasoningEffort === undefined ? {} : { reasoningEffort },
+      })
       expect(title.finish).toEqual({ kind: 'stop' })
     }
     const main = await assemble(ctx, { provider: 'moe4all', model, messages: [], reasoningEffort: ReasoningEffortId('xhigh') })
