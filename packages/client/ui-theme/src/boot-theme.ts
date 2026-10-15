@@ -35,7 +35,7 @@ function bootThemeScript(preference: ThemePreference, darkPreference: DarkThemeP
  */
 export function bootThemeInjection(
   preference: ThemePreference = DEFAULT_PREFERENCE,
-  darkPreference: DarkThemePreference = 'gray',
+  darkPreference: DarkThemePreference = 'green',
 ): IndexInjection {
   return { kind: 'script', placement: 'body', text: bootThemeScript(preference, darkPreference) }
 }

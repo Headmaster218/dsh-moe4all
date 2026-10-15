@@ -18,7 +18,7 @@ export type DarkThemePreference = 'green' | 'black' | 'gray'
 export type ThemePreference = typeof THEME_PREFERENCES[number]
 
 /** Default preference when the user-settings document has no override. */
-export const DEFAULT_PREFERENCE: ThemePreference = 'system'
+export const DEFAULT_PREFERENCE: ThemePreference = 'green'
 
 /** Durable theme section shared by the Host schema and the browser scope. */
 export interface ThemeSettings {
@@ -31,7 +31,7 @@ export interface ThemeSettings {
 /** Durable theme schema; also the wire envelope the browser scope validates against. */
 export const ThemeSettingsSchema: z<ThemeSettings> = z.object({
   [THEME_PREFERENCE_FIELD]: z.union([...THEME_PREFERENCES]).default(DEFAULT_PREFERENCE),
-  darkPreference: z.union(['green', 'black', 'gray']).default('gray'),
+  darkPreference: z.union(['green', 'black', 'gray']).default('green'),
 })
 
 /**

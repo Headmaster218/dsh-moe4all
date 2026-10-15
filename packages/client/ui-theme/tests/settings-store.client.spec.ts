@@ -3,9 +3,9 @@ import { describe, expect, it } from 'vitest'
 import { createAppearanceRowStore } from '../src/client/settings-store.ts'
 
 describe('createAppearanceRowStore', () => {
-  it('init shape: system preference with revision at -1', () => {
+  it('init shape: green preference with revision at -1', () => {
     const store = createAppearanceRowStore().create()
-    expect(store.getSnapshot()).toEqual({ preference: 'system', darkPreference: 'gray', activeId: 'gray', revision: -1 })
+    expect(store.getSnapshot()).toEqual({ preference: 'green', darkPreference: 'green', activeId: 'green', revision: -1 })
   })
 
   it('sync mirrors the preference and advances the revision', () => {

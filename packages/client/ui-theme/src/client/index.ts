@@ -159,7 +159,7 @@ export class ThemeRuntime {
   private themes: ThemeDefinition[] = [...BUILTIN_THEMES]
   private preference: ThemePreference
   private revision = 0
-  private darkPreference: DarkThemePreference = 'gray'
+  private darkPreference: DarkThemePreference = 'green'
   private snapshot: ThemeSnapshot
   private readonly media: MediaQueryList | undefined
   /** Override layers by source; seq (monotonic) is the stacking order. */
@@ -250,9 +250,9 @@ export class ThemeRuntime {
   /** Adopt the scope's accepted durable preference without writing it back. */
   private adopt(): void {
     const section = this.host.getSnapshot().value
-    if (section === undefined || (this.preference === section.preference && this.darkPreference === (section.darkPreference ?? 'gray'))) return
+    if (section === undefined || (this.preference === section.preference && this.darkPreference === (section.darkPreference ?? 'green'))) return
     this.preference = section.preference
-    this.darkPreference = section.darkPreference ?? 'gray'
+    this.darkPreference = section.darkPreference ?? 'green'
     this.publish()
   }
 

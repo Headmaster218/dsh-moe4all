@@ -19,9 +19,9 @@ const THEME_NAMESPACE = settingsNamespace(THEME_SETTINGS_NAMESPACE)
 /** Read the registered preference or use the schema default without a settings provider. */
 function readPreference(ctx: Context): ThemeSettings {
   const settings = ctx.get('settings')
-  if (settings === undefined) return { preference: DEFAULT_PREFERENCE, darkPreference: 'gray' }
+  if (settings === undefined) return { preference: DEFAULT_PREFERENCE, darkPreference: 'green' }
   const section = settings.get(THEME_NAMESPACE) as ThemeSettings | undefined
-  if (section === undefined) return { preference: DEFAULT_PREFERENCE, darkPreference: 'gray' }
+  if (section === undefined) return { preference: DEFAULT_PREFERENCE, darkPreference: 'green' }
   return section
 }
 

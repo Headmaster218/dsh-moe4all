@@ -27,7 +27,7 @@ type AppearanceRowActions = {
  */
 export function createAppearanceRowStore(): EngineStoreHandle<AppearanceRowState, AppearanceRowActions> {
   return defineStore({
-    init: (): AppearanceRowState => ({ preference: 'system', darkPreference: 'gray', activeId: 'gray', revision: -1 }),
+    init: (): AppearanceRowState => ({ preference: 'green', darkPreference: 'green', activeId: 'green', revision: -1 }),
     actions: {
       sync: (d, preference: ThemePreference, darkPreference: DarkThemePreference, activeId: string, revision: number) => {
         if (revision <= d.revision) return

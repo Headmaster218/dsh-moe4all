@@ -65,10 +65,10 @@ describe('theme bootstrap row', () => {
     expect(document.body.hasAttribute(DARK_ATTRIBUTE)).toBe(dark)
   })
 
-  it('defaults to system and falls back to light when matchMedia is unavailable', () => {
+  it('defaults to the MoE4All green palette when no preference is stored', () => {
     vi.stubGlobal('matchMedia', undefined)
     executeBootstrap()
-    expect(document.documentElement.style.colorScheme).toBe('light')
-    expect(document.body.hasAttribute(DARK_ATTRIBUTE)).toBe(false)
+    expect(document.documentElement.style.colorScheme).toBe('dark')
+    expect(document.body.hasAttribute(DARK_ATTRIBUTE)).toBe(true)
   })
 })

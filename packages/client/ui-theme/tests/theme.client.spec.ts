@@ -22,13 +22,12 @@ const make = (host = stubSettingsScope<ThemeSettings>()): {
 }
 
 describe('ThemeRuntime', () => {
-  it('defaults to the system preference resolved against prefers-color-scheme', () => {
+  it('defaults to the MoE4All green palette', () => {
     const { theme } = make()
     const snapshot = theme.getTheme()
-    expect(snapshot.preference).toBe('system')
-    // jsdom matchMedia is absent; system resolves to light.
-    expect(snapshot.active.id).toBe('light')
-    expect(snapshot.active.colorScheme).toBe('light')
+    expect(snapshot.preference).toBe('green')
+    expect(snapshot.active.id).toBe('green')
+    expect(snapshot.active.colorScheme).toBe('dark')
     expect(snapshot.themes.map(t => t.id)).toEqual(['light', 'dark', 'green', 'black', 'gray', 'white'])
   })
 
@@ -79,7 +78,7 @@ describe('ThemeRuntime', () => {
     theme.setTheme('sepia')
     expect(theme.getTheme().active.tokens['--dsw-alias-bg-base']).toBe('red')
     dispose()
-    expect(theme.getTheme().preference).toBe('system')
+    expect(theme.getTheme().preference).toBe('green')
     expect(theme.getTheme().themes.map(t => t.id)).toEqual(['light', 'dark', 'green', 'black', 'gray', 'white'])
     // Custom ids are in-process extension themes; only the built-in product
     // preferences cross the Host settings schema.
@@ -109,6 +108,7 @@ describe('ThemeRuntime', () => {
 
   it('stacks reversible token overrides in call order and selects the active palette value', () => {
     const { theme } = make()
+    theme.setTheme('light')
     const firstTokens: ThemeTokenOverrides = {
       '--shared': { light: 'first-light', dark: 'first-dark' },
       '--first': { light: 'first-only-light', dark: 'first-only-dark' },
@@ -137,6 +137,8 @@ describe('ThemeRuntime', () => {
 
   it('replacing one source leaves its stale disposer harmless', () => {
     const { theme, events } = make()
+    theme.setTheme('light')
+    events.length = 0
     const stale = theme.overrideTokens('package', {
       '--old': { light: 'old-light', dark: 'old-dark' },
     })
@@ -222,6 +224,8 @@ describe('ThemeRuntime', () => {
     it('system resolves against the media query and follows OS flips', () => {
       const media = stubMedia(true)
       const { theme, events } = make()
+      theme.setTheme('system')
+      events.length = 0
       expect(theme.getTheme().preference).toBe('system')
       expect(theme.getTheme().active.id).toBe('dark')
       media.flip()
