@@ -79,8 +79,11 @@ function Content({ state, controller, t }: { state: DesktopState; controller: De
       <div><div className={css.overviewTitle}>{t(summary)}</div>
         <p className={css.overviewDetail}>{pending ? t(activeRow?.pendingAction === 'rollback' ? 'cap.rollbackReadyInfo' : 'cap.preparedInfo') : activeRow ? name(activeRow)
           : attention.length ? `${attention.length} ${t('cap.toReview')}` : t(snapshot?.settings.preview ? 'cap.previewChannel' : 'cap.stableChannel')}</p></div>
-      <Button variant="outline" size="sm" className={css.checkButton} disabled={busy} onClick={() => controller.command('check')}>
-        <IconRefreshOutline16 />{t('cap.check')}</Button>
+      <div className={css.overviewActions}>{pending ? <>
+        <Button variant="ghost" size="sm" disabled={busy} onClick={() => controller.command('cancel')}>{t('cap.cancel')}</Button>
+        <Button variant="primary" size="sm" disabled={busy} onClick={() => setConfirmation({ kind: 'restart' })}>{t('cap.restart')}</Button>
+      </> : <Button variant="outline" size="sm" className={css.checkButton} disabled={busy} onClick={() => controller.command('check')}>
+        <IconRefreshOutline16 />{t('cap.check')}</Button>}</div>
     </div>
     <div className={css.toolbar}>
       <div className={css.filters} role="group" aria-label={t('cap.views')}>
@@ -176,10 +179,6 @@ function Content({ state, controller, t }: { state: DesktopState; controller: De
         </li>
       })}
     </ul></>}
-    {pending && (view === 'history' || !rows.some(row => row.pending)) && <div className={css.pending} role="status"><span>{t('cap.pending')}</span><div className={css.pendingActions}>
-      <Button variant="ghost" size="sm" disabled={busy} onClick={() => controller.command('cancel')}>{t('cap.cancel')}</Button>
-      <Button variant="primary" size="sm" disabled={busy} onClick={() => setConfirmation({ kind: 'restart' })}>{t('cap.restart')}</Button>
-    </div></div>}
   </div>
 }
 
