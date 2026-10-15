@@ -95,6 +95,53 @@ it('keeps a skipped version manually installable from the Settings section', () 
   expect(screen.getByRole('region', { name: 'Confirm update' })).toBeDefined()
 })
 
+it('keeps introductions, recovery actions and restart instructions on their component cards', () => {
+  const f = fixture()
+  f.send({ ...f.caps, snapshot: { ...f.caps.snapshot, plugins: [{ ...f.caps.snapshot.plugins[0], pending: true, phase: 'ready' }], pending: true } })
+  render(<CapabilitiesSection {...f.props} />)
+  const card = screen.getByRole('listitem', { name: 'Mneme Memory' })
+  expect(within(card).getByText(en['cap.mnemeInfo'])).toBeDefined()
+  expect(within(card).getByText(en['cap.preparedInfo'])).toBeDefined()
+  expect(within(card).getByRole('button', { name: 'Restart and apply' })).toBeDefined()
+  expect(within(card).queryByRole('button', { name: 'Download and prepare Mneme Memory' })).toBeNull()
+  act(() => f.send({ ...f.caps, snapshot: { ...f.caps.snapshot, plugins: [{ ...f.caps.snapshot.plugins[0], phase: 'error', error: 'Network unavailable' }] } }))
+  expect(within(card).getByText(en['cap.failedInfo'])).toBeDefined()
+  expect(within(card).getByText(en['cap.details'])).toBeDefined()
+  expect(within(card).getByRole('button', { name: 'Retry update Mneme Memory' })).toBeDefined()
+  act(() => f.send({ ...f.caps, snapshot: { ...f.caps.snapshot, plugins: [{ ...f.caps.snapshot.plugins[0], updateAvailable: false, phase: 'complete' }] } }))
+  expect(within(card).getByText(en['cap.appliedInfo'])).toBeDefined()
+})
+
+it('explains the Engine Manager prerequisite without presenting it as an Engine installation failure', () => {
+  const f = fixture()
+  f.send({ ...f.caps, snapshot: { ...f.caps.snapshot, engine: { supported: true, managerUpdateRequired: true, phase: 'idle', error: '', latest: { tag: 'release-1.0.1' } } } })
+  render(<CapabilitiesSection {...f.props} />)
+  const card = screen.getByRole('listitem', { name: 'MoE4All Engine' })
+  expect(within(card).getByText(en['cap.managerRequired'])).toBeDefined()
+  expect(within(card).queryByText('Error details')).toBeNull()
+  expect(within(card).queryByRole('button')).toBeNull()
+})
+
+it('does not notify subscribers again for identical capability status echoes', () => {
+  const f = fixture()
+  f.send(f.caps)
+  const before = f.controller.store.getSnapshot()
+  f.send(structuredClone(f.caps))
+  expect(f.controller.store.getSnapshot()).toBe(before)
+})
+
+it('reopens once when a background preparation needs restart, then preserves dismissal', () => {
+  const f = fixture()
+  f.send({ ...f.caps, snapshot: { ...f.caps.snapshot, plugins: [{ ...f.caps.snapshot.plugins[0], phase: 'prepare' }] } })
+  f.controller.close()
+  const ready = { ...f.caps, snapshot: { ...f.caps.snapshot, pending: true, plugins: [{ ...f.caps.snapshot.plugins[0], phase: 'ready', pending: true }] } }
+  f.send(ready)
+  expect(f.controller.store.getSnapshot().open).toBe(true)
+  f.controller.close()
+  f.send(structuredClone(ready))
+  expect(f.controller.store.getSnapshot().open).toBe(false)
+})
+
 it('does not interrupt a check for repeated automatic popups and confirms restart separately', () => {
   const f = fixture()
   f.send({ ...f.caps, snapshot: { ...f.caps.snapshot, checking: true } })

@@ -14,6 +14,7 @@ export interface CapabilityRow {
   completed: number
   total: number
   pending: boolean
+  managerUpdateRequired?: boolean
 }
 
 /** Validated subset of the process-owned persistent state. */
@@ -53,5 +54,5 @@ export function capabilitySnapshot(value: unknown): CapabilitySnapshot | undefin
       installedVersion: text(installed?.tag), latestVersion: text(latest?.tag), phase: text(engine.phase), error: text(engine.error),
       updateAvailable: engine.canInstall === true && runtime?.owned !== true && !!latest && (engine.updateAvailable === true || !installed),
       rollbackAvailable: false, pending: false, releaseUrl: 'https://github.com/Headmaster218/MoE4All/releases',
-      completed: count(install?.downloadedBytes), total: count(install?.totalBytes) } } : {}) }
+      completed: count(install?.downloadedBytes), total: count(install?.totalBytes), managerUpdateRequired: engine.managerUpdateRequired === true } } : {}) }
 }

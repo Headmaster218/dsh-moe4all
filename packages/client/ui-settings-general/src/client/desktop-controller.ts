@@ -35,6 +35,7 @@ export function desktopBridge(): DesktopBridge | undefined {
 /** Lifecycle owner for update notifications and explicitly requested native actions. */
 export class DesktopController {
   readonly store = createSnapshotStore<DesktopState>({ phase: 'idle', installedVersion: '', version: '', completed: 0, total: 0, message: '', open: false })
+  private lastCapabilities = ''
   private readonly receive = (event: MessageEvent<unknown>): void => {
     const value = event.data
     if (typeof value !== 'object' || value === null) return
@@ -42,7 +43,13 @@ export class DesktopController {
     if (data.type === 'moe4all-capabilities-state' && typeof data.busy === 'boolean') {
       const capabilities = capabilitySnapshot(data.snapshot)
       if (!capabilities) return
-      this.store.set({ ...this.store.getSnapshot(), capabilities, capabilityBusy: data.busy })
+      const signature = JSON.stringify([capabilities, data.busy])
+      if (signature === this.lastCapabilities) return
+      this.lastCapabilities = signature
+      const state = this.store.getSnapshot()
+      const outcome = capabilities.plugins.some(row => ['ready', 'error', 'complete', 'rolled-back'].includes(row.phase)
+        && state.capabilities?.plugins.find(old => old.id === row.id)?.phase !== row.phase)
+      this.store.set({ ...state, capabilities, capabilityBusy: data.busy, open: state.open || outcome })
       this.notifyUpdates()
       return
     }

@@ -12,6 +12,8 @@ The Host half registers `ui-onboarding` in the user-settings seam. The welcome s
 
 MoE4All desktop deployments contribute Capabilities between Plugins and MoE4All in Settings, plus a persistent `settings.notification` outlet for the same in-page DSH Modal. A page-scoped controller validates native messages, opens available updates automatically, and persists exact component/version skips through the native owner. Skips suppress automatic reminders, not manual installation or later versions. Agent, maintained plugins and Engine retain independent update executors; downloads, installation and restart require explicit confirmation. Dismissed progress remains available in Settings. Ordinary browsers expose no desktop updater, and subscriptions are disposed with the plugin.
 
+Capabilities uses compact two-column component cards, falling back to one column on narrow screens. Each card includes a description, installed and target versions, progress and component-specific actions. A prepared plugin shows Restart and apply; failures retain the running plugin and offer retry with expandable raw details; startup confirmation reports that the update is active. An older Engine Manager is an installation prerequisite, not an Engine installation failure. Identical native status echoes do not republish the same snapshot.
+
 ## Model Experience
 
 None, as the plugin renders browser settings UI; nothing here reaches a model request.
