@@ -78,6 +78,8 @@ export function ConversationSessionHeader({
 
   return (
     <header
+      data-moe4all-drag=""
+      data-moe4all-caption="conversation"
       className={clsx(css.header, hideChrome && css.headerHidden)}
       aria-hidden={hideChrome || undefined}
     >

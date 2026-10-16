@@ -77,7 +77,7 @@ export function DetailsPanel({ useSession, useSessions, sessionId, useStore, ren
 
   return (
     <div className={css.root}>
-      <div className={css.header}>
+      <div className={css.header} data-moe4all-drag="" data-moe4all-caption="details">
         <div className={css.title}>
           {selection === null ? t('details.title') : material?.name ?? selection.toolName ?? t('details.title')}
         </div>

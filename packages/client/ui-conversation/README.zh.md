@@ -1,5 +1,7 @@
 # @deepseek-ai/dsh-client-ui-conversation
 
+桌面嵌入使用稳定的 `data-moe4all-drag` 标题标记，以及区分会话和详情的 `data-moe4all-caption` 标记。仅桌面宿主注入拖动区域和窗口按钮避让；普通浏览器布局不变，标题内的交互控件仍可点击。
+
 [English](README.md) | 中文
 
 会话领域：骨架（标题栏／标签页／编辑器／空状态）、聊天视图（分组步骤摘要流、流式尾部隔离与轮次状态）、编辑器 dock（与输入区一同 sticky 的会话统计行）、输入区 dock（队列行加 todo 计划条）、详情壳层，以及按 scope 寻址的 ConversationController。工具展示属于 [`ui-tool`](../ui-tool/README.zh.md)。
