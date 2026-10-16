@@ -36,7 +36,7 @@ it('uses the shared modal with navigation, typed path and explicit selection', (
 
 it('keeps cancellation available while loading, clears stale selection and follows the locale', () => {
   const f = fixture(); f.send(f.picker)
-  render(<DesktopPicker {...f.props} t={key => zh[key]} />)
+  render(<DesktopPicker {...f.props} t={key => (zh as Record<string, string>)[key] ?? key} />)
   fireEvent.click(screen.getByRole('button', { name: 'model.gguf' }))
   act(() => f.send({ ...f.picker, path: 'G:\\', entries: [], loading: true }))
   expect(screen.getByText(zh['picker.loading'])).toBeDefined()

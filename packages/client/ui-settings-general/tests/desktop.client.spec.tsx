@@ -19,7 +19,9 @@ function fixture() {
   const snapshot = { schema: 'moe4all/capabilities/v1', settings: { autoCheck: true, preview: true, skipped: {} }, plugins: [plugin], checking: false, pending: false }
   const caps = { type: 'moe4all-capabilities-state', busy: false, snapshot }
   const t = (key: string) => (en as Record<string, string>)[key] ?? key
-  const props = { controller, useDesktop: bindSnapshotSelector(controller.store), t, openSection: vi.fn() }
+  const unusedHook = (() => { throw new Error('unused by capability notifications') }) as never
+  const props = { controller, useDesktop: bindSnapshotSelector(controller.store), t, openSection: vi.fn(),
+    useSessions: unusedHook, useWorkspaces: unusedHook }
   return { bridge, controller, receive, send, agent, caps, props }
 }
 
