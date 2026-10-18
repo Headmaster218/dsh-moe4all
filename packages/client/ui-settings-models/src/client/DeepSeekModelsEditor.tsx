@@ -12,6 +12,7 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { en } from './locales.ts'
 import styles from './ModelsSection.module.css'
+import { validReasoningEfforts } from './ReasoningEditor.tsx'
 
 /** One catalog entry kept structurally open so hidden or future fields survive an edit. */
 export type DeepSeekModelDraft = Record<string, unknown>
@@ -74,7 +75,7 @@ export interface DeepSeekModelsValidationFailure {
   index: number
   /** Message key owned by the Models settings section. */
   key: 'modelIdRequired' | 'modelIdDuplicate' | 'modelNameInvalid' | 'modelContextInvalid'
-  | 'modelMaxTokensInvalid'
+  | 'modelMaxTokensInvalid' | 'modelReasoningInvalid'
 }
 
 /** Convert a schema-validated catalog value into records without dropping hidden fields. */
@@ -104,6 +105,7 @@ export function validateDeepSeekModels(value: unknown): DeepSeekModelsValidation
     if (trimmed === undefined || trimmed.length === 0) return { index, key: 'modelIdRequired' }
     if (seen.has(trimmed)) return { index, key: 'modelIdDuplicate' }
     seen.add(trimmed)
+    if (!validReasoningEfforts(model['reasoningEfforts'])) return { index, key: 'modelReasoningInvalid' }
     const name = model['name']
     if (name !== undefined && (typeof name !== 'string' || name.length === 0)) {
       return { index, key: 'modelNameInvalid' }
