@@ -32,7 +32,7 @@ export function ReasoningEditor({ value, onChange, disabled, index, t }: {
   return <div className={styles['modelField']}>
     <label>
       <span className={styles['modelFieldLabel']}>{t('modelReasoning')}</span>
-      <select className={styles['input']} aria-label={`${t('modelReasoning')} ${index + 1}`}
+      <select className={`${styles['input']} ${styles['selectInput']}`} aria-label={`${t('modelReasoning')} ${index + 1}`}
         disabled={disabled} value={mode} onChange={event => {
           onChange(event.target.value === 'inherit' ? undefined : event.target.value === 'disabled'
             ? false : { off: null, low: 'low', medium: 'medium', high: 'high' })
