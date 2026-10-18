@@ -1,5 +1,5 @@
 /** Offline content previews rendered in an opaque-origin sandbox, never in the Agent DOM. */
-import { unzipSync } from 'fflate'
+import { unzipSync } from 'fflate/browser'
 import { pptxToHtml } from '@jvmr/pptx-to-html'
 import type { WorkspaceFileReply } from '@deepseek-ai/dsh-api-remotes/client'
 
