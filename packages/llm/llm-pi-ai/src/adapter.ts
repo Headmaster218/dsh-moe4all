@@ -366,7 +366,7 @@ export class PiAiAdapter extends LlmAdapter {
           maxBytes: profile.requestImageMaxBytes,
         })
       if (upstream.aborted) {
-        yield { type: 'finish', reason: { kind: 'aborted' } }
+        yield { type: 'finish', reason: { kind: 'aborted', failure: { code: 'ABORTED', message: 'pi-ai request aborted by caller' } } }
         return
       }
       const events = snapshot.models.streamSimple(model, context, {

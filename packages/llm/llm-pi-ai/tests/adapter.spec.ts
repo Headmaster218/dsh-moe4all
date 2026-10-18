@@ -1033,7 +1033,7 @@ describe('abort wiring', () => {
       messages: [],
       signal: controller.signal,
     })) chunks.push(chunk)
-    expect(chunks.at(-1)).toMatchObject({ type: 'finish', reason: { kind: 'aborted' } })
+    expect(chunks.at(-1)).toEqual({ type: 'finish', reason: { kind: 'aborted', failure: { code: 'ABORTED', message: 'pi-ai request aborted by caller' } } })
   })
 
   it('honors a pre-aborted caller signal', async () => {
