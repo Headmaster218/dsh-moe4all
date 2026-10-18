@@ -381,6 +381,10 @@ export class SessionRuntime implements ISessions {
     this.manager.selectSubagent(address)
   }
 
+  interruptSubagent(address: Extract<SubagentAddress, { mode: 'continuable' }>) {
+    return this.manager.interruptSubagent(address)
+  }
+
   /**
    * Resolve an already discovered direct-parent address without opening it.
    * Feature plugins use this to avoid Agent-bound RPCs in persisted child views.

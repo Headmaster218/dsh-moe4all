@@ -32,6 +32,7 @@
  */
 
 import { Context, Service } from '@deepseek-ai/cordis'
+import z from '@deepseek-ai/schemastery'
 import { scopeTarget } from '@deepseek-ai/dsh-scope'
 import type { Scoped } from '@deepseek-ai/dsh-scope'
 import { assertObjectJsonSchema } from '@deepseek-ai/dsh-tools'
@@ -67,6 +68,16 @@ import { listChildren as listSubagentChildren, listDescendants as listSubagentDe
 import type { SubagentDescendantListEntry, SubagentListEntry } from './list-children.ts'
 import { snapshotSubagentDescriptor } from './descriptor.ts'
 import { subagentIdentityProjectionDefinition, subagentTimingProjectionDefinition } from './projection.ts'
+import { TurnCapacityGate } from './turn-capacity.ts'
+
+/** Default number of continuable child turns allowed to run model steps at once. */
+export const DEFAULT_MAX_CONCURRENT_CONTINUABLE_TURNS = 10
+
+/** Deployment-wide concurrency policy for continuable child turns. */
+export interface Config {
+  /** Positive safe integer limiting simultaneous model-active continuable child turns. */
+  maxConcurrentContinuableTurns?: number
+}
 
 export * from './out-of-process.ts'
 export { AssistantOutputFold, finalAssistantOutput } from './assistant-output.ts'
@@ -169,8 +180,17 @@ declare module '@deepseek-ai/cordis' {
 
 /** Named provider registry with one-shot runs, durable discovery, and continuable-child operations. */
 export class SubagentRuntime extends Service {
+  static Config: z<Config> = z.object({
+    maxConcurrentContinuableTurns: z.number()
+      .step(1)
+      .min(1)
+      .max(Number.MAX_SAFE_INTEGER)
+      .default(DEFAULT_MAX_CONCURRENT_CONTINUABLE_TURNS),
+  })
+
   private providers = new Map<string, SubagentProvider>()
   private continuations: SubagentContinuationManager | undefined
+  private readonly turnCapacity: TurnCapacityGate
   /** Deployment contributions composed into unpublished continuable children. */
   private readonly setupRegistry = new SubagentActivationSetupRegistry()
   /**
@@ -180,14 +200,17 @@ export class SubagentRuntime extends Service {
    */
   private readonly emitLifecycle: LifecycleEmitter
 
-  constructor(ctx: Context) {
+  constructor(ctx: Context, config: Config = {}) {
     super(ctx, 'subagents')
+    this.turnCapacity = new TurnCapacityGate(
+      config.maxConcurrentContinuableTurns ?? DEFAULT_MAX_CONCURRENT_CONTINUABLE_TURNS,
+    )
     this.emitLifecycle = createLifecycleEmitter(this.ctx, parent => scopeTarget(this, parent))
     ctx.inject(['agents'], (childCtx: Context) => {
       const manager = new SubagentContinuationManager(childCtx, {
         prepareContinuable: (name, request) => this.prepareContinuable(name, request),
         observeActivation: (provider, childId, parent) => this.observeActivation(provider, childId, parent),
-      }, this.setupRegistry)
+      }, this.setupRegistry, this.turnCapacity)
       this.continuations = manager
       childCtx.effect(() => () => {
         /* v8 ignore else -- one injected binding owns the slot until its fiber disposes. */
@@ -198,6 +221,16 @@ export class SubagentRuntime extends Service {
       projectionCtx.sessionProjections.register(subagentTimingProjectionDefinition)
       projectionCtx.sessionProjections.register(subagentIdentityProjectionDefinition)
     })
+  }
+
+  /** Snapshot the deployment-wide active and queued continuable turn capacity. */
+  continuableTurnCapacity(): { active: number; waiting: number; limit: number } {
+    return this.turnCapacity.snapshot()
+  }
+
+  /** Report whether one continuable child currently owns or awaits a model-turn permit. */
+  continuableTurnState(childId: SessionId): 'active' | 'queued' | undefined {
+    return this.turnCapacity.stateOf(childId)
   }
 
   /**

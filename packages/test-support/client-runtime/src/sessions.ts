@@ -184,7 +184,7 @@ export class TestSessions implements ISessions {
 
   /** Calls observed on the service-level face, newest last. */
   readonly calls: {
-    method: 'open' | 'openSubagent' | 'setSubagentCatalogOpen' | 'refreshSubagents'
+    method: 'open' | 'openSubagent' | 'interruptSubagent' | 'setSubagentCatalogOpen' | 'refreshSubagents'
       | 'clear' | 'search' | 'fork'
     args: unknown[]
   }[] = []
@@ -421,6 +421,12 @@ export class TestSessions implements ISessions {
       draft.current = address.childSessionId
       draft.currentAddress = address
     })
+  }
+
+  /** Record a user interrupt request for the addressed continuable fixture. */
+  interruptSubagent(address: Extract<SubagentAddress, { mode: 'continuable' }>) {
+    this.calls.push({ method: 'interruptSubagent', args: [address] })
+    return Promise.resolve({ ok: true as const, value: { accepted: true as const } })
   }
 
   /** Resolve the current fixture's retained catalog address. */

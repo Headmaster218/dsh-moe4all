@@ -27,6 +27,8 @@ export type SubagentListEntry =
     | {
       mode: 'continuable'
       label: string
+      /** Whether the child has a model-turn permit or waits in the capacity queue. */
+      turnState?: 'active' | 'queued'
     }
   )
   | {
@@ -60,6 +62,8 @@ export type SubagentAddress =
 export interface SubagentCatalog {
   entries: SubagentListEntry[]
   parentAvailable: boolean
+  /** Deployment-wide continuable child turn capacity at catalog-read time. */
+  turnCapacity?: { active: number; waiting: number; limit: number }
 }
 
 /** Subagent-domain unary methods. */

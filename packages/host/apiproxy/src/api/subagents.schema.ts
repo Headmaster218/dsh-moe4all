@@ -26,6 +26,7 @@ export const subagentListEntrySchema = z.union([
     activity: z.union([z.literal('running'), z.literal('inactive')]),
     hasChildren: z.boolean(),
     label: z.string(),
+    turnState: z.union([z.literal('active'), z.literal('queued')]).optional(),
   }),
   z.object({
     kind: z.literal('diagnostic'),
@@ -43,6 +44,11 @@ export const subagentListRequestSchema = z.object({
 export const subagentListValueSchema = z.object({
   entries: z.array(subagentListEntrySchema),
   parentAvailable: z.boolean(),
+  turnCapacity: z.object({
+    active: z.number().int().nonnegative(),
+    waiting: z.number().int().nonnegative(),
+    limit: z.number().int().positive(),
+  }).optional(),
 }) satisfies z.ZodType<Wire<ResponseValue<'subagent.list'>>>
 
 /** subagent.history request payload. */

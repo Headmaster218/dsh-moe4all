@@ -291,6 +291,8 @@
 
     - id: subagent
       name: '@deepseek-ai/dsh-subagent'
+      config:
+        maxConcurrentContinuableTurns: 10
 
     - id: subagent-spawn-in-process
       name: '@deepseek-ai/dsh-subagent-spawn-in-process'

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import type {
-  SessionId, SessionListState, SessionSummary, SubagentCatalogSnapshot,
+  JobView, SessionId, SessionListState, SessionSummary, SubagentCatalogSnapshot,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import {
   SubagentHeaderLineage, type SubagentHeaderLineageProps,
@@ -36,6 +36,7 @@ function catalog(over: Partial<SubagentCatalogSnapshot> = {}): SubagentCatalogSn
       { kind: 'diagnostic', id: 'bad' as SessionId, reason: 'corrupt' },
     ],
     parentAvailable: true,
+    turnCapacity: { active: 2, waiting: 1, limit: 4 },
     state: 'ready',
     error: null,
     ...over,
@@ -46,6 +47,7 @@ function props(
   value: SubagentCatalogSnapshot | undefined,
   nested: Readonly<Record<SessionId, SubagentCatalogSnapshot>> = {},
   summaries?: Readonly<Record<SessionId, SessionSummary>>,
+  jobsBySession: SessionListState['jobsBySession'] = {},
 ) {
   const state = {
     ids: [CHILD],
@@ -61,7 +63,7 @@ function props(
     },
     current: PARENT, phase: 'ready',
     subagentsByParent: value === undefined ? nested : { [PARENT]: value, ...nested },
-    jobsBySession: {},
+    jobsBySession,
     currentAddress: undefined,
   } satisfies SessionListState
   function useSessions<T>(select: (snapshot: SessionListState) => T): T {
@@ -71,6 +73,7 @@ function props(
     sessionId: PARENT,
     useSessions,
     openChild: vi.fn(),
+    interruptChild: vi.fn(async () => ({ ok: true, value: { accepted: true as const } })),
     refresh: vi.fn(),
     setCatalogOpen: vi.fn(),
     lineageSessionId: PARENT,
@@ -98,6 +101,23 @@ function hoverCatalog(trigger: HTMLElement): void {
 }
 
 describe('SubagentHeaderLineage', () => {
+  it('stops a running continuable child from the catalog without navigating', async () => {
+    const input = props(catalog())
+    render(<SubagentHeaderLineage {...input} />)
+    hoverCatalog(screen.getByRole('button', { name: /2 个子代理/ }))
+
+    const stop = screen.getByRole('button', { name: '停止' })
+    expect(screen.getAllByRole('button', { name: '停止' })).toHaveLength(1)
+    await act(async () => { fireEvent.click(stop) })
+
+    expect(input.interruptChild).toHaveBeenCalledWith({
+      parentSessionId: PARENT,
+      childSessionId: CHILD,
+      mode: 'continuable',
+    })
+    expect(input.openChild).not.toHaveBeenCalled()
+  })
+
   it('aggregates live descendant activity onto the closed trigger', () => {
     const summaries: Record<SessionId, SessionSummary> = {
       [CHILD]: {
@@ -167,6 +187,69 @@ describe('SubagentHeaderLineage', () => {
       parentSessionId: PARENT, childSessionId: CHILD, mode: 'continuable',
     })
     expect(input.setCatalogOpen).toHaveBeenLastCalledWith(PARENT, false)
+  })
+
+  it('distinguishes a child queued for a model-turn slot from active execution', () => {
+    const input = props(catalog({ entries: [{
+      kind: 'child', id: CHILD, mode: 'continuable', label: 'worker',
+      activity: 'running', hasChildren: false, turnState: 'queued',
+    }] }))
+    render(<SubagentHeaderLineage {...input} />)
+    hoverCatalog(screen.getByRole('button', { name: /1 个子代理/ }))
+
+    const row = screen.getByRole('treeitem', { name: /等待模型并发槽位/ })
+    expect(row.getAttribute('aria-label')).toContain('正在运行')
+    expect(row.getAttribute('aria-label')).toContain('等待模型并发槽位')
+    expect(row.querySelector('[data-state="warning"]')).toBeTruthy()
+    expect(within(row).getByRole('button', { name: '停止' })).toBeTruthy()
+  })
+
+  it('opens a larger workspace with live capacity and agent-tree overview', () => {
+    render(<SubagentHeaderLineage {...props(catalog())} />)
+    hoverCatalog(screen.getByRole('button', { name: /2 个子代理/ }))
+    fireEvent.click(screen.getByRole('button', { name: '展开工作区' }))
+
+    expect(screen.getByRole('region', { name: '多 Agent 工作区' })).toBeTruthy()
+    const meter = screen.getByRole('meter', { name: '模型轮次并发 2/4 · 排队 1' })
+    expect(meter.getAttribute('aria-valuenow')).toBe('2')
+    expect(meter.firstElementChild?.getAttribute('style'))
+      .toContain('--dsw-alias-state-warn-primary')
+    expect(screen.getAllByRole('treeitem')).toHaveLength(3)
+    expect(screen.getByRole('tree').className).toContain('workspaceTree')
+
+    fireEvent.click(screen.getByRole('button', { name: '收起工作区' }))
+    expect(screen.queryByRole('region', { name: '多 Agent 工作区' })).toBeNull()
+  })
+
+  it('includes background jobs owned by the root and subagent descendants in the workspace', () => {
+    const fork = 'ordinary-fork' as SessionId
+    const jobs: SessionListState['jobsBySession'] = {
+      [PARENT]: [{
+        id: 'bash-1' as JobView['id'], kind: 'bash', label: 'search docs', status: 'running', startedAt: 10,
+      }],
+      [CHILD]: [{
+        id: 'subagent-1' as JobView['id'], kind: 'subagent', label: 'review files',
+        status: 'completed', startedAt: 20, finishedAt: 80,
+      }],
+      [fork]: [{
+        id: 'bash-2' as JobView['id'], kind: 'bash', label: 'outside lineage',
+        status: 'running', startedAt: 30,
+      }],
+    }
+    const summaries = {
+      [CHILD]: { ...summary(CHILD, 50), parentId: PARENT, origin: 'subagent' as const, running: true },
+      [fork]: { ...summary(fork, 50), parentId: PARENT, running: true },
+    }
+    render(<SubagentHeaderLineage {...props(catalog(), {}, summaries, jobs)} />)
+    hoverCatalog(screen.getByRole('button', { name: /1 个子代理/ }))
+    fireEvent.click(screen.getByRole('button', { name: '展开工作区' }))
+
+    const list = screen.getByRole('list')
+    expect(within(list).getAllByRole('listitem')).toHaveLength(2)
+    expect(within(list).getByText('search docs')).toBeTruthy()
+    expect(within(list).getByText('review files')).toBeTruthy()
+    expect(within(list).queryByText('outside lineage')).toBeNull()
+    expect(screen.getAllByText('后台任务')).toHaveLength(2)
   })
 
   it('selects singular count keys for one descendant', () => {
@@ -384,6 +467,8 @@ describe('SubagentHeaderLineage', () => {
     hoverCatalog(trigger)
 
     const runningRow = screen.getByRole('treeitem', { name: /running.*4\.6K tok · 1分10秒/ })
+    expect(screen.getByRole('status').textContent).toBe('运行中 1/9 · 累计 ≥123M tok')
+    expect(screen.getByText('模型轮次并发 2/4 · 排队 1')).toBeTruthy()
     const runningMetrics = within(runningRow)
     const tokenMetric = runningMetrics.getByText('4.6K tok')
     const durationMetric = runningMetrics.getByText('1分10秒')
