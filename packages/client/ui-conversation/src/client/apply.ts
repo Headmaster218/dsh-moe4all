@@ -218,7 +218,7 @@ export function apply(ctx: Context): void {
         const nextId = await workspaces.connectWorkspace(workspaceId)
         if (sessionId !== undefined && nextId !== sessionId) {
           const from = inputHub.shell(sessionId)
-          const draft = from.snapshot.draft
+          const draft = from.exportDraft()
           const imageIds = from.snapshot.imageIds
           const next = inputHub.shell(nextId)
           if (imageIds.length === 0 || next.addImages(imageIds)) {

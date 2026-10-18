@@ -33,6 +33,18 @@ function chip(shell: SessionInputShell): void {
 }
 
 describe('reference submission', () => {
+  it('transfers canonical references to another workspace input shell', async () => {
+    const source = new SessionInputShell({ actx: {} as ClientContext, defaultSink: vi.fn(), commandImages })
+    chip(source)
+    expect(source.snapshot.draft).toBe('@Research ')
+    const sink = vi.fn(() => Promise.resolve<SubmitOutcome>({ kind: 'success' }))
+    const target = new SessionInputShell({ actx: {} as ClientContext, defaultSink: sink, commandImages })
+    target.setDraft(source.exportDraft())
+    source.setDraft('')
+    target.submit()
+    await vi.waitFor(() => { expect(sink).toHaveBeenCalledWith(mention, [], 'queue', expect.any(AbortSignal)) })
+    expect(source.snapshot.draft).toBe('')
+  })
   it('mirrors canonical reference text so a persisted draft remains resolvable after remount', async () => {
     const mirror = vi.fn()
     const first = new SessionInputShell({

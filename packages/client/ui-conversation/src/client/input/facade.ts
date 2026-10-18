@@ -123,6 +123,13 @@ export class SessionInputShell implements SessionInput {
     this.run(this.core.dispatch({ type: 'draft-changed', draft: text, ...(editRange !== undefined ? { editRange } : {}) }))
   }
 
+  /** Serialize a draft for workspace transfer without replacing reference URIs with display labels.
+   * @returns Canonical clipboard text accepted by a fresh input shell.
+   */
+  exportDraft(): string {
+    return projectClipboard(this.core.state)
+  }
+
   /** Append ordered image ids unless an admission transaction is locked. */
   addImages(ids: readonly DraftAttachmentId[]): boolean {
     if (this.snapshot.phase === 'adjudicating' || this.snapshot.phase === 'submitting') return false
