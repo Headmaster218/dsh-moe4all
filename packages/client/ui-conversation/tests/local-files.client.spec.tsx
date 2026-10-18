@@ -44,7 +44,7 @@ describe('local files', () => {
     fireEvent.change(screen.getByLabelText(en['files.path']), { target: { value: '/notes.txt' } })
     fireEvent.click(screen.getByRole('button', { name: en['files.reference'] }))
     await waitFor(() => { expect(b.operation).toHaveBeenCalledOnce() })
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel', exact: true }))
+    fireEvent.click(screen.getByRole('button', { name: /^Cancel$/ }))
     expect(b.operation.mock.calls[0]![1].aborted).toBe(true)
     finish({ kind: 'imported', path: '/notes.txt' })
     await waitFor(() => { expect(screen.queryByRole('dialog')).toBeNull() })

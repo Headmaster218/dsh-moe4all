@@ -85,7 +85,7 @@ describe('assembled workspace workbench', () => {
       const view = runtime.renderRoot()
       expect(workspaceFiles).not.toHaveBeenCalled()
       fireEvent.click(view.getByRole('tab', { name: '文件工作台' }))
-      expect((runtime.ctx.get('layout') as { closeDetails: ReturnType<typeof vi.fn> }).closeDetails).toHaveBeenCalledOnce()
+      expect(runtime.ctx.get('layout')?.closeDetails).toHaveBeenCalledOnce()
       await waitFor(() => { expect(workspaceFiles).toHaveBeenCalledWith({ sessionId: SID, kind: 'list', path: '' }, expect.any(AbortSignal)) })
       fireEvent.click(await view.findByTitle('index.html'))
       await waitFor(() => { expect(view.container.querySelector('iframe')?.getAttribute('sandbox')).toBe('allow-scripts') })
