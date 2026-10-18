@@ -25,6 +25,7 @@ import type {
   ConversationSessionInjected, DetailsInjected,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { createChatStore } from '../src/client/stores.ts'
+import type { WorkbenchInjected } from '../src/client/workbench/Workbench.tsx'
 
 // The service reads its initial locale from the browser; these specs assert
 // the shipped Chinese copy, so they state the browser they assume.
@@ -135,7 +136,7 @@ describe('conversation slot inject API', () => {
     // Assembly has no session side effects: opening the event window belongs
     // to the runtime watch path, not the inject factory.
     expect(b.sessionFake.open).not.toHaveBeenCalled()
-    expect(injected.views.list().map(v => v.id)).toEqual(['chat'])
+    expect(injected.views.list().map(v => v.id)).toEqual(['chat', 'workbench'])
 
     const chatView = b.chatViewApi(ROOT)
     chatView.injected.loadOlder()
@@ -233,21 +234,22 @@ describe('conversation slot inject API', () => {
     await b.runtime.dispose()
   })
 
-  it('openFile (chat view face) resolves against session cwd and calls workspaces.openPath', async () => {
+  it('openFile opens an internal tab without delegating to the host OS', async () => {
     const b = await bench()
-    const { injected } = b.chatViewApi(ROOT)
+    const { injected, instance } = b.chatViewApi(ROOT)
     await injected.openFile('src/a.ts')
-    await vi.waitFor(() => {
-      expect(b.runtime.workspaces.calls).toContainEqual({ method: 'openPath', args: ['/proj/src/a.ts'] })
-    })
+    expect(instance.getSnapshot().workbench).toEqual({ paths: ['src/a.ts'], active: 'src/a.ts' })
+    expect(b.runtime.workspaces.calls.some(call => call.method === 'openPath')).toBe(false)
     await b.runtime.dispose()
   })
 
-  it('openFile rejects when the Host cannot open the path', async () => {
+  it('the explicit workbench native opener preserves OS failures and session cwd resolution', async () => {
     const b = await bench()
     b.runtime.workspaces.stub('openPath', () => Promise.reject(new Error('xdg-open is not available')))
-    const { injected } = b.chatViewApi(ROOT)
-    await expect(injected.openFile('src/a.ts')).rejects.toThrow('xdg-open is not available')
+    const entry = b.slots.entries('conversation.details.workspace')[0]!
+    const injected = (entry.inject as unknown as (id: SessionId) => WorkbenchInjected)(ROOT)
+    await expect(injected.openNative('src/a.ts')).rejects.toThrow('xdg-open is not available')
+    expect(b.runtime.workspaces.calls).toContainEqual({ method: 'openPath', args: ['/proj/src/a.ts'] })
     await b.runtime.dispose()
   })
 
@@ -334,11 +336,11 @@ describe('conversation slot inject API', () => {
     await Promise.resolve() // ledger notifications batch per microtask
     expect(listener).toHaveBeenCalled()
     expect(injected.views.version()).toBeGreaterThan(before)
-    expect(injected.views.list().map(v => v.id)).toEqual(['chat', 'chat2'])
+    expect(injected.views.list().map(v => v.id)).toEqual(['chat', 'chat2', 'workbench'])
     // Label falls back to the id when a rider declares none.
     const off2 = b.slots.register(
       { name: 'conversation.view', id: 'bare', order: 6 } as never, (() => null) as never)
-    expect(injected.views.list().map(v => v.label)).toEqual(['对话', 'X', 'bare'])
+    expect(injected.views.list().map(v => v.label)).toEqual(['对话', 'X', 'bare', '文件工作台'])
     off()
     off2()
     unsub()

@@ -1858,6 +1858,12 @@ importers:
 
   packages/client/ui-conversation:
     dependencies:
+      "@jvmr/pptx-to-html":
+        specifier: 1.1.2
+        version: 1.1.2
+      fflate:
+        specifier: ^0.8.2
+        version: 0.8.3
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
@@ -9200,6 +9206,9 @@ importers:
 
 packages:
 
+  "@jvmr/pptx-to-html@1.1.2":
+    resolution:
+      integrity: sha512-ixZ6ikF8j7uNNA1QdF0wWnZUd7nzhJhBnzjzKILwrCr73xb8b1h8ciZW+BCae+9OwMMF/Af9SiIdWkq5Zcg7Yw==
   '@agentclientprotocol/sdk@0.25.1':
     resolution: {integrity: sha512-jx2rF3bdpGwZ75Q/meyEDLLbYmbtxk82Uh9hDCdxDvcEedBnNSF5hZAnL/kJR5VNz56JqwOmqnAqasC84MwwkQ==}
     peerDependencies:
@@ -14726,6 +14735,9 @@ packages:
 
 snapshots:
 
+  "@jvmr/pptx-to-html@1.1.2":
+    dependencies:
+      jszip: 3.10.1
   '@agentclientprotocol/sdk@0.25.1(zod@4.4.3)':
     dependencies:
       zod: 4.4.3

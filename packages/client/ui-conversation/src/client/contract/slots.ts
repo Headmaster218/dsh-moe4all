@@ -167,6 +167,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * instead; this one is the whole panel.
      */
     'conversation.details.tool': { kind: 'single'; scope: 'session'; owner: DetailsToolOwnerProps }
+    /** Local files, applied changes and read-only Git views in the details panel. */
+    'conversation.details.workspace': { kind: 'single'; scope: 'session' }
     /**
      * The composer takeover chain: entries are selector-routed replacements
      * of the default InputBar. Declared by this package's 'conversation'
@@ -390,8 +392,8 @@ export interface TurnTailOwnerProps {
   /** The closing assistant's seq — the anchor the tail renders under. */
   seq: number
   /**
-   * Open a filesystem path through the Host (tool-row semantics; the chat
-   * view resolves relative paths against the session cwd).
+   * Open a workspace file in the internal workbench. System opening remains
+   * an explicit workbench action, resolved against the session cwd.
    */
   openFile: (path: string) => void
 }
@@ -757,10 +759,10 @@ export interface ChatViewInjected {
   /** Selection write + details panel opening in one gesture (store action + layout orchestration). */
   openDetails: (target: SelectionTarget) => void
   /**
-   * Open a tool-arg filesystem path with the host OS default application
-   * (relative paths resolve against the session cwd). Always returns a
-   * promise: fulfills when the Host opens the path, rejects when it cannot
-   * hand the path off (the chat view shows that reason and a retry).
+   * Open a tool-arg path in the session's workbench. Relative paths resolve
+   * against the session workspace at the file API; native opening remains an
+   * explicit workbench action. The promise acknowledges UI navigation;
+   * preview/read failures are shown by the workbench, not hidden in chat.
    */
   openFile: (path: string) => Promise<void>
   loadOlder: () => void
@@ -819,7 +821,7 @@ export interface DetailsInjected {
 }
 
 /** Full details-slot props: selection store, Tool output seat, injected close callback, and locale. */
-export type DetailsSlotProps = PropsRuntime<'details'> & PropsRenderSlots<'conversation.details.tool'>
+export type DetailsSlotProps = PropsRuntime<'details'> & PropsRenderSlots<'conversation.details.tool' | 'conversation.details.workspace'>
   & PropsStore<ChatStore> & DetailsInjected & PropsLocale<'conversation'>
 
 /** Owner share common to the hero / New-Session Workspace pickers. */

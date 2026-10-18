@@ -2,8 +2,9 @@
 import { randomUUID } from 'node:crypto'
 import { constants } from 'node:fs'
 import { mkdir, open, realpath, readdir, stat } from 'node:fs/promises'
-import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { WorkspaceFileReply, WorkspaceFileRequest } from './api/workspace-files.ts'
+import { workspaceGit, workspaceGitDiff } from './workspace-git.ts'
 
 /** Deployment-controlled limits shared by the file API and its UI. */
 export interface WorkspaceFileLimits { maxBytes: number; maxEntries: number }
@@ -59,6 +60,15 @@ function mimeOf(path: string): string {
 export async function workspaceFiles(cwd: string, request: WorkspaceFileRequest, limits: WorkspaceFileLimits, signal: AbortSignal): Promise<WorkspaceFileReply> {
   signal.throwIfAborted()
   const root = await realpath(cwd)
+  if (request.kind === 'git') return workspaceGit(root, signal, limits.maxBytes)
+  if (request.kind === 'git-diff') {
+    try { await containedWorkspacePath(root, request.path) }
+    catch (error: unknown) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      await containedWorkspacePath(root, dirname(resolve(root, request.path)))
+    }
+    return workspaceGitDiff(root, request.path, signal, limits.maxBytes)
+  }
   if (request.kind === 'reference') {
     // Explicit references may name external files. This checks existence only;
     // it does not extend the workbench's read roots or the model's permissions.
@@ -70,10 +80,11 @@ export async function workspaceFiles(cwd: string, request: WorkspaceFileRequest,
   if (request.kind === 'upload') {
     if (!validUploadName(request.name)) throw new Error('Invalid upload filename')
     const encoded = request.dataBase64
-    if (encoded.length > Math.ceil(limits.maxBytes / 3) * 4 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) {
+    if (encoded.length > Math.ceil(limits.maxBytes / 3) * 4) {
       throw new Error('Upload exceeds the file limit or is not canonical base64')
     }
     const data = Buffer.from(encoded, 'base64')
+    if (data.toString('base64') !== encoded) throw new Error('Upload is not canonical base64')
     if (data.byteLength > limits.maxBytes) throw new Error('Upload exceeds the file limit')
     const parent = join(root, '.moe4all-uploads')
     await mkdir(parent, { recursive: true })

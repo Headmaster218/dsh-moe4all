@@ -39,6 +39,8 @@ import { DetailsPanel } from './skeleton/DetailsPanel.tsx'
 import { QuestionDirectory } from './navigation/QuestionDirectory.tsx'
 import { readQuestions, revealQuestion } from './navigation/questions.ts'
 import { LocalFiles } from './files/LocalFiles.tsx'
+import { Workbench, WorkbenchAction } from './workbench/Workbench.tsx'
+import { appliedChanges } from './workbench/changes.ts'
 import type { WorkspaceFileOperation } from '@deepseek-ai/dsh-api-remotes/client'
 import { en, NS, zh, type ConversationKey } from './locales.ts'
 import { registerConversationNodes } from './conversation-nodes/register.ts'
@@ -320,6 +322,36 @@ export function apply(ctx: Context): void {
     }),
   }, QuestionDirectory)
 
+  const workbenchInjected = (sessionId: SessionId) => ({
+    fileOperation: async (operation: WorkspaceFileOperation, signal: AbortSignal) => {
+      const response = await connection.api.host.workspaceFiles({ ...operation, sessionId }, signal)
+      if (!response.result.ok) throw new Error(response.result.error.message)
+      return response.result.value
+    },
+    getChanges: () => {
+      const snapshot = sessions.binding(sessionId)?.session.getSnapshot()
+      return snapshot === undefined ? [] : appliedChanges(snapshot.chat)
+    },
+    openNative: (path: string) => {
+      const cwd = sessions.list.getSnapshot().byId[sessionId]?.cwd
+      return workspaces.openPath(resolveWorkspacePath(cwd, path))
+    },
+  })
+  slots.register({
+    name: 'conversation.session.header.utilities', id: 'workbench', order: 20, locale: NS, store: chatStore,
+    inject: (_sessionId: SessionId, actions: BoundActions<typeof chatStore>) => ({
+      open: () => {
+        actions.setDetailsMode('files')
+        if (typeof window !== 'undefined' && window.innerWidth < 1100) actions.setView('workbench')
+        else { actions.setView('chat'); layout.openDetails() }
+      },
+    }),
+  }, WorkbenchAction)
+  slots.register({ name: 'conversation.view', id: 'workbench', order: 10, label: () => t('workbench.title'),
+    locale: NS, store: chatStore,
+    inject: (sessionId: SessionId) => ({ ...workbenchInjected(sessionId), onActivate: () => { layout.closeDetails() } }),
+  }, Workbench)
+
   // The default composer body: its own single slot inside the composer
   // chain's fallback. Public machine surface arrives via the
   // provide channel above; the keyboard command face and the stop/retry
@@ -449,8 +481,10 @@ export function apply(ctx: Context): void {
         },
         fileMentions: owner => ctx.get('chatFileMentions')?.forClosing(owner),
         openFile: (path) => {
-          const cwd = sessions.list.getSnapshot().byId[sessionId]?.cwd
-          return workspaces.openPath(resolveWorkspacePath(cwd, path))
+          actions.openWorkbenchFile(path)
+          if (typeof window !== 'undefined' && window.innerWidth < 1100) actions.setView('workbench')
+          else { actions.setView('chat'); layout.openDetails() }
+          return Promise.resolve()
         },
         loadOlder: () => { void scoped.loadOlder() },
         loadImage: attachment => conversation.resolveImage(sessionId, attachment),
@@ -499,11 +533,14 @@ export function apply(ctx: Context): void {
     locale: NS,
     children: {
       'conversation.details.tool': { kind: 'single', scope: 'session' },
+      'conversation.details.workspace': { kind: 'single', scope: 'session' },
     },
     store: chatStore,
     inject: (): DetailsInjected => ({
       closeDetails: () => { layout.closeDetails() },
     }),
   }, DetailsPanel)
+
+  slots.register({ name: 'conversation.details.workspace', locale: NS, store: chatStore, inject: workbenchInjected }, Workbench)
 
 }

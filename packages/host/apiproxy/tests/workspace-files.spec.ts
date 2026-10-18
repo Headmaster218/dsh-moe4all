@@ -31,6 +31,9 @@ describe('workspace files', () => {
     }
     for (const name of ['../x', 'a:b', 'CON.txt', 'aux', 'a.', 'a\n.txt']) expect(validUploadName(name)).toBe(false)
     await expect(workspaceFiles(root, { sessionId: 's1', kind: 'upload', name: 'large.txt', dataBase64: Buffer.alloc(1025).toString('base64') } as WorkspaceFileRequest, limits, signal())).rejects.toThrow('limit')
+    for (const dataBase64 of ['!!!!', 'aGVsbG8', 'aGVsbG8=\n', 'Zh==']) {
+      await expect(workspaceFiles(root, { sessionId: 's1', kind: 'upload', name: 'bad.txt', dataBase64 } as WorkspaceFileRequest, limits, signal())).rejects.toThrow('canonical')
+    }
     const reference = await workspaceFiles(root, { sessionId: 's1', kind: 'reference', path: join(outside, 'secret.txt') } as WorkspaceFileRequest, limits, signal())
     expect(reference).toEqual({ kind: 'imported', path: await realpath(join(outside, 'secret.txt')) })
   })

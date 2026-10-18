@@ -60,7 +60,7 @@ describe('apply wiring', () => {
   it('registers the chat view and its keyed business-node seat', async () => {
     const b = await bench()
     const entries = b.slots.entries('conversation.view')
-    expect(entries.map(e => e.options.id)).toEqual(['chat'])
+    expect(entries.map(e => e.options.id)).toEqual(['chat', 'workbench'])
     // Label is a locale thunk resolving through the zh dictionary.
     expect(resolveSlotLabel(entries[0]?.options.label)).toBe('对话')
     expect(entries[0]?.options.order).toBe(0)

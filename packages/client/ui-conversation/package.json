@@ -48,6 +48,8 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@jvmr/pptx-to-html": "1.1.2",
+    "fflate": "^0.8.2",
     "clsx": "^2.0.0",
     "@deepseek-ai/schemastery": "workspace:^"
   },

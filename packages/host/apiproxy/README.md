@@ -2,6 +2,8 @@
 
 English | [中文](README.zh.md)
 
+`host.workspaceFiles` authorizes bounded list/read/upload/reference and read-only Git graph/diff operations against the selected session workspace without resuming an Agent. The gateway config exposes `workspaceFileMaxBytes` (default 32 MiB) and `workspaceFileMaxEntries` (default 5000). Preview paths refuse canonical escapes and Git metadata; explicit references return an existing path without extending read roots. Copies use unique directories and never overwrite. Git uses literal fixed argv with external diff, textconv and hooks disabled; no mutation command is exposed.
+
 The API gateway shared by every client consists of the TypeScript API contract (`src/api/`, zero Node dependencies, importable from the browser), the fetch carrier pair (`src/fetch/`: `toFetchHandler` on the host side, `AbstractApiClient` plus platform subclasses on the client side), and the host-side implementation (`src/api-proxy.ts`: `createApiProxy` plus the default-exported `ApiProxyService` gateway plugin — config `{nativeOpen?, sessionExportCompressionLevel?, coldBlankProbeMaxBytes?}`, provides `ctx.apiProxy`). This package registers no routes; carriers such as HTTP wrap `ctx.apiProxy` themselves. The shipped Web composition lives in [`packages/bundle/web-app/cordis.patch.yml`](../../bundle/web-app/cordis.patch.yml), while its default Agent model selection belongs to [`@deepseek-ai/dsh-agent-default-model`](../../core/agent-default-model/README.md) in the base bundle.
 
 ## The shared Agent default (`agent-default-model` Settings section)

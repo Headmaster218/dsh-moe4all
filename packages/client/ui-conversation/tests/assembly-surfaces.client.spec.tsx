@@ -48,9 +48,9 @@ function WorkspaceProbe({ open }: EmptyWorkspaceOwnerProps) {
   )
 }
 
-async function bench(opts?: { blank?: boolean }) {
+async function bench(opts?: { blank?: boolean; workspaceFiles?: ReturnType<typeof vi.fn> }) {
   const runtime = await SlotTestRuntime.create()
-  runtime.provide('connection', { api: { settings: {} }, isLoopback: false })
+  runtime.provide('connection', { api: { settings: {}, host: { workspaceFiles: opts?.workspaceFiles } }, isLoopback: false })
   // The plugin injects both; these specs exercise no settings path.
   runtime.provide('remote', { $on: () => () => {} })
   runtime.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
@@ -74,6 +74,25 @@ async function bench(opts?: { blank?: boolean }) {
   await runtime.mount({ inject: [...inject], apply })
   return runtime
 }
+
+describe('assembled workspace workbench', () => {
+  it('opens the registered view and reads previews through the selected session transport', async () => {
+    const workspaceFiles = vi.fn(async (request: { kind: string }) => ({ result: { ok: true, value: request.kind === 'list'
+      ? { kind: 'directory', path: '', entries: [{ path: 'index.html', name: 'index.html', directory: false }], truncated: false }
+      : { kind: 'file', path: 'index.html', mime: 'text/html', size: 16, dataBase64: btoa('<h1>Preview</h1>') } } }))
+    const runtime = await bench({ workspaceFiles })
+    try {
+      const view = runtime.renderRoot()
+      expect(workspaceFiles).not.toHaveBeenCalled()
+      fireEvent.click(view.getByRole('tab', { name: '文件工作台' }))
+      expect((runtime.ctx.get('layout') as { closeDetails: ReturnType<typeof vi.fn> }).closeDetails).toHaveBeenCalledOnce()
+      await waitFor(() => { expect(workspaceFiles).toHaveBeenCalledWith({ sessionId: SID, kind: 'list', path: '' }, expect.any(AbortSignal)) })
+      fireEvent.click(await view.findByTitle('index.html'))
+      await waitFor(() => { expect(view.container.querySelector('iframe')?.getAttribute('sandbox')).toBe('allow-scripts') })
+      expect(workspaceFiles).toHaveBeenCalledWith({ sessionId: SID, kind: 'read', path: 'index.html' }, expect.any(AbortSignal))
+    } finally { await runtime.dispose() }
+  })
+})
 
 describe('resident composer', () => {
   it('renders the locked view state while no session exists at all', async () => {

@@ -7,7 +7,7 @@
 // session snapshot — no data of its own.
 
 import { Fragment } from 'react'
-import { CodeBlock } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, CodeBlock, IconFolderOpenOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { shallowEqual } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ConversationSnapshot, RunningToolCall, ToolCallBlock, ToolResultNode } from '@deepseek-ai/dsh-client-runtime/client'
 import type { DetailsSlotProps } from '../contract/slots.ts'
@@ -63,8 +63,9 @@ function rawResultText(block: ToolCallBlock): string {
   return parts.join('\n')
 }
 
-export function DetailsPanel({ useSession, useSessions, sessionId, useStore, renderSlot, closeDetails, t }: DetailsPanelProps) {
+export function DetailsPanel({ useSession, useSessions, sessionId, useStore, actions, renderSlot, closeDetails, t }: DetailsPanelProps) {
   const selection = useStore(s => s.selection)
+  const mode = useStore(s => s.detailsMode ?? 'tool')
   // Session workspace root: an omitted or relative terminal cwd resolves
   // against it, which the pure presenter cannot see.
   const sessionCwd = useSessions(list => list.byId[sessionId]?.cwd)
@@ -79,8 +80,11 @@ export function DetailsPanel({ useSession, useSessions, sessionId, useStore, ren
     <div className={css.root}>
       <div className={css.header} data-moe4all-drag="" data-moe4all-caption="details">
         <div className={css.title}>
-          {selection === null ? t('details.title') : material?.name ?? selection.toolName ?? t('details.title')}
+          {mode !== 'tool' ? t('workbench.title') : selection === null ? t('details.title') : material?.name ?? selection.toolName ?? t('details.title')}
         </div>
+        {mode === 'tool' ? <Button variant="ghost" size="sm" aria-label={t('workbench.title')} title={t('workbench.title')}
+          onClick={() => { actions.setDetailsMode('files') }}><IconFolderOpenOutline16 /></Button>
+          : <Button variant="ghost" size="sm" onClick={() => { actions.setDetailsMode('tool') }}>{t('details.title')}</Button>}
         <button
           type="button" className={css.close} aria-label={t('details.close')}
           onClick={() => { closeDetails() }}
@@ -91,7 +95,7 @@ export function DetailsPanel({ useSession, useSessions, sessionId, useStore, ren
         </button>
       </div>
       <div className={css.body}>
-        {selection === null || callId === undefined
+        {mode !== 'tool' ? renderSlot('conversation.details.workspace', {}) : selection === null || callId === undefined
           ? <div className={css.empty}>{t('details.empty')}</div>
           : material === null
             ? <div className={css.empty}>{t('details.notInWindow')}</div>

@@ -266,7 +266,8 @@ describe('run_code sub-calls through the real chat machinery', () => {
     expect(nested).not.toBeNull()
   })
 
-  it('a file sub-row click opens the host path; bash sub-rows do not open details', async () => {
+  it('a file sub-row opens the workbench; bash sub-rows do not change that selection', async () => {
+    vi.stubGlobal('innerWidth', 1400)
     const parent = 'call-64'
     const subCalls = [
       subCall(11, parent, 1, 'read', { path: 'notes/demo.txt' }, 'ok'),
@@ -275,12 +276,10 @@ describe('run_code sub-calls through the real chat machinery', () => {
     const b = await bench(snapshotWith([codeResult(10, parent)], subCalls))
     const view = mountApp(b.slots)
     view.getByText('notes/demo.txt').click()
-    expect(b.layout.openDetails).not.toHaveBeenCalled()
-    await vi.waitFor(() => {
-      expect(b.workspaces.openPath).toHaveBeenCalledWith('notes/demo.txt')
-    })
+    expect(b.layout.openDetails).toHaveBeenCalledOnce()
+    expect(b.workspaces.openPath).not.toHaveBeenCalled()
     view.getByText('List notes').click()
-    expect(b.layout.openDetails).not.toHaveBeenCalled()
+    expect(b.layout.openDetails).toHaveBeenCalledOnce()
   })
 
   it('a RUNNING run_code call nests its so-far dispatches under the spinner row', async () => {

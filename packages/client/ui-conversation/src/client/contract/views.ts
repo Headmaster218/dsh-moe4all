@@ -17,6 +17,10 @@ export interface ViewTab { id: string; label: string }
  * Unknown persisted view ids fall back to the stable Chat view.
  */
 export interface ChatStoreState {
+  /** Details content mode; old persisted stores default to the tool inspector. */
+  detailsMode?: 'tool' | 'files' | 'changes' | 'git'
+  /** Open workspace file tabs, storing paths only, never file bytes. */
+  workbench?: { paths: string[]; active: string | null }
   /** Details-linkage channel (conversation writes, details reads). */
   selection: SelectionTarget | null
   /** Composer draft (persisted; survives session switches and reloads). */
