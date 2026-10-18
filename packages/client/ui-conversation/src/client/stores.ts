@@ -11,6 +11,7 @@ type ChatActions = {
   setDraft: (draft: ChatStoreState, text: string) => void
   setView: (draft: ChatStoreState, view: string) => void
   setInspect: (draft: ChatStoreState, target: { callId: CallId } | null) => void
+  setQuestionTarget: (draft: ChatStoreState, seq: number | null) => void
 }
 
 /**
@@ -29,6 +30,7 @@ export function createChatStore(): EngineStoreHandle<ChatStoreState, ChatActions
       setDraft: (d, text: string) => { d.draft = text },
       setView: (d, view: string) => { d.view = view },
       setInspect: (d, target: { callId: CallId } | null) => { d.inspect = target },
+      setQuestionTarget: (d, seq: number | null) => { d.questionTarget = seq },
     },
   })
 }

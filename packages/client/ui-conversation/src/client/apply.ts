@@ -35,6 +35,8 @@ import { queueDockEntry } from './queue/QueueDock.tsx'
 import { ConversationRoot } from './skeleton/ConversationRoot.tsx'
 import { ConversationSession, ConversationSessionHeader } from './skeleton/ConversationSession.tsx'
 import { DetailsPanel } from './skeleton/DetailsPanel.tsx'
+import { QuestionDirectory } from './navigation/QuestionDirectory.tsx'
+import { readQuestions, revealQuestion } from './navigation/questions.ts'
 import { en, NS, zh, type ConversationKey } from './locales.ts'
 import { registerConversationNodes } from './conversation-nodes/register.ts'
 import { registerChatNodeRenderers } from './chat/register-node-renderers.ts'
@@ -269,6 +271,31 @@ export function apply(ctx: Context): void {
       open: (id) => { sessions.open(id) },
     }),
   }, ConversationSessionHeader)
+
+  slots.register({
+    name: 'conversation.session.header.utilities', id: 'questions', order: 10, locale: NS, store: chatStore,
+    inject: (sessionId: SessionId, actions: BoundActions<typeof chatStore>) => ({
+      loadQuestions: (signal: AbortSignal) => readQuestions(async (beforeSeq, pageSignal) => {
+        const session = sessions.binding(sessionId)?.session
+        if (session === undefined) throw new Error('Session is unavailable')
+        const address = session.getSnapshot().subagent?.address
+        const payload = { ...beforeSeq === undefined ? {} : { beforeSeq }, maxMessages: 50 }
+        const response = address === undefined
+          ? await ctx.connection.api.sessions.history({ sessionId, ...payload }, pageSignal)
+          : await ctx.connection.api.subagents.history({ ...address, ...payload }, pageSignal)
+        if (!response.result.ok) throw new Error(response.result.error.message)
+        return response.result.value
+      }, signal),
+      navigate: async (seq: number, signal: AbortSignal) => {
+        const session = sessions.binding(sessionId)?.session
+        if (session === undefined) throw new Error('Session is unavailable')
+        await revealQuestion(session, seq, signal)
+        signal.throwIfAborted()
+        actions.setView('chat')
+        actions.setQuestionTarget(seq)
+      },
+    }),
+  }, QuestionDirectory)
 
   // The default composer body: its own single slot inside the composer
   // chain's fallback. Public machine surface arrives via the

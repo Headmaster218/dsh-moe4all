@@ -10,6 +10,11 @@ const PLAN_NEXT_ACTION_EN = 'describe your task to generate plan'
 
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {
+  'questions.title': '问题目录',
+  'questions.search': '搜索本会话的提问',
+  'questions.loading': '正在读取会话记录…',
+  'questions.attachment': '附件消息',
+  'questions.empty': '没有匹配的提问',
   'view.chat': '对话',
   'hint.plan': PLAN_NEXT_ACTION_ZH,
   'hint.goal': '输入目标，智能体将持续执行',
@@ -188,6 +193,11 @@ export type ConversationKey = keyof typeof zh
 
 /** English dictionary, checked complete against the zh key set. */
 export const en = {
+  'questions.title': 'Questions',
+  'questions.search': 'Search questions in this conversation',
+  'questions.loading': 'Loading conversation history...',
+  'questions.attachment': 'Attachment message',
+  'questions.empty': 'No matching questions',
   'view.chat': 'Chat',
   'hint.plan': PLAN_NEXT_ACTION_EN,
   'hint.goal': 'describe the objective for a long-running task',

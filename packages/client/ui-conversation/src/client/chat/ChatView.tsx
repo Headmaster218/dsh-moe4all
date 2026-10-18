@@ -156,7 +156,7 @@ function TurnStatus({ startTime, t }: {
  * ordered business Node crosses the keyed renderer seat.
  */
 export function ChatView({
-  useSession, useSessions, useStore, renderSlot, sessionId, openFile, loadOlder, loadImage, inspectCall, chatScroll, forkAt,
+  useSession, useSessions, useStore, actions, renderSlot, sessionId, openFile, loadOlder, loadImage, inspectCall, chatScroll, forkAt,
   fileMentions, t,
 }: ChatViewSlotProps) {
   const order = useSession(s => s.chat.order)
@@ -171,6 +171,7 @@ export function ChatView({
   const hasMore = useSession(s => s.hasMore)
   const loadingOlder = useSession(s => s.loadingOlder)
   const selectedCallId = useStore(s => s.selection?.callId)
+  const questionTarget = useStore(s => s.questionTarget ?? null)
   const [fileOpenError, setFileOpenError] = useState<{ path: string; message: string } | null>(null)
   const [fileOpenBusy, setFileOpenBusy] = useState(false)
   // Close/retry must ignore a settlement that started before the latest
@@ -312,6 +313,25 @@ export function ChatView({
   })
 
   const onScrollRef = useRef(() => {})
+  useLayoutEffect(() => {
+    if (questionTarget === null || listRef.current === null) return
+    const local = listRef.current
+    const row = [...local.querySelectorAll<HTMLElement>('[data-chat-seq]')]
+      .find(item => Number(item.dataset.chatSeq) === questionTarget
+        && (item.dataset.chatFlowKind === 'user' || item.dataset.chatFlowKind === 'steering'))
+    if (row === undefined) return
+    const el = scrollerOf(local)
+    anchorRef.current = null
+    atBottomRef.current = false
+    setAtBottom(false)
+    el.scrollTop += flowTop(row, el) - 12
+    observedTopRef.current = el.scrollTop
+    chatScroll.save({ anchorKey: row.dataset.chatAnchorKey!, anchorTop: flowTop(row, el), scrollTop: el.scrollTop })
+    row.tabIndex = -1
+    row.focus({ preventScroll: true })
+    actions.setQuestionTarget(null)
+  }, [questionTarget, order, actions, chatScroll])
+
   onScrollRef.current = () => {
     const local = listRef.current
     /* v8 ignore next -- ref-null guard: the handler only fires while mounted. */

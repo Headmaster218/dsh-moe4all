@@ -29,4 +29,6 @@ export interface ChatStoreState {
    * persisted snapshots from before this field rehydrate without it.
    */
   inspect: { callId: CallId } | null
+  /** One-shot user-message navigation, acknowledged by the mounted Chat view. */
+  questionTarget?: number | null
 }
