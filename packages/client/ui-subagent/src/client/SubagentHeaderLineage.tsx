@@ -4,11 +4,12 @@ import {
 import { createPortal } from 'react-dom'
 import {
   indexSubagentDescendants, type SessionId, type SessionListState, type SessionProjectionMap,
-  type SessionSummary, type SubagentAddress, type SubagentCatalogSnapshot,
+  type JobView, type SessionSummary, type SubagentAddress, type SubagentCatalogSnapshot,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import {
   IconChevronDownOutline14, IconChevronRightOutline14, IconRefreshOutline14, StateDot,
 } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { RpcResult } from '@deepseek-ai/dsh-api-remotes/client'
 import type { PropsLocale, PropsRuntime, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import { NS } from './locales.ts'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -22,6 +23,7 @@ type Catalogs = SessionListState['subagentsByParent']
 /** Business actions supplied by the slot registration. */
 export interface SubagentCatalogInjected {
   openChild: (address: SubagentAddress) => void
+  interruptChild: (address: Extract<SubagentAddress, { mode: 'continuable' }>) => Promise<RpcResult<{ accepted: true }>>
   refresh: (parentSessionId: SessionId) => void
   setCatalogOpen: (parentSessionId: SessionId, open: boolean) => void
 }
@@ -40,6 +42,7 @@ interface CatalogRowsProps {
   level: number
   now: number
   openChild: (address: SubagentAddress) => void
+  interruptChild: SubagentCatalogInjected['interruptChild']
   refresh: (parentSessionId: SessionId) => void
   toggleBranch: (childSessionId: SessionId) => void
   closeCatalog: () => void
@@ -72,6 +75,16 @@ function formatTokens(value: number): string {
   return `${scaled(value / 1_000_000)}M`
 }
 
+function jobStatusLabel(status: JobView['status'], t: TranslateNS<typeof NS>): string {
+  switch (status) {
+    case 'running': return t('workspace.job.running')
+    case 'stopping': return t('workspace.job.stopping')
+    case 'completed': return t('workspace.job.completed')
+    case 'killed': return t('workspace.job.killed')
+    case 'failed': return t('workspace.job.failed')
+  }
+}
+
 /** Sum the four disjoint durable provider-usage buckets. */
 function tokenTotal(
   usage: SessionProjectionMap['tokenUsage'] | undefined,
@@ -80,6 +93,34 @@ function tokenTotal(
     ? undefined
     : usage.uncachedInputTokens + usage.outputTokens
       + usage.cacheReadTokens + usage.cacheWriteTokens
+}
+
+/** Sum known durable token usage across one uninterrupted subagent subtree. */
+function descendantTokenTotal(
+  rootSessionId: SessionId,
+  summaries: Readonly<Record<SessionId, SessionSummary>>,
+): { total: number; coveredCount: number } | undefined {
+  let total = 0
+  let coveredCount = 0
+  for (const descendant of Object.values(summaries)) {
+    if (descendant.origin !== 'subagent') continue
+    const seen = new Set<SessionId>()
+    let current: SessionSummary | undefined = descendant
+    while (current?.origin === 'subagent' && current.parentId !== undefined
+      && !seen.has(current.id)) {
+      seen.add(current.id)
+      if (current.parentId === rootSessionId) {
+        const usage = tokenTotal(descendant.projectionValues?.tokenUsage)
+        if (usage !== undefined) {
+          total += usage
+          coveredCount += 1
+        }
+        break
+      }
+      current = summaries[current.parentId]
+    }
+  }
+  return coveredCount > 0 ? { total, coveredCount } : undefined
 }
 
 /** Exact whole-second active-turn duration for one catalog row. */
@@ -236,12 +277,33 @@ function CatalogLoadingRows({
 /** Render one catalog level and recurse only through explicitly expanded rows. */
 function CatalogRows({
   parentSessionId, currentSessionId, catalog, catalogs, summaries, expanded, level, now,
-  openChild, refresh, toggleBranch, closeCatalog, t,
+  openChild, interruptChild, refresh, toggleBranch, closeCatalog, t,
 }: CatalogRowsProps & { t: TranslateNS<typeof NS> }) {
+  const [stoppingId, setStoppingId] = useState<SessionId>()
+  const [stopError, setStopError] = useState<{ id: SessionId; message: string }>()
   const emptyLoading = catalog.state === 'loading' && catalog.entries.length === 0
   const reserveDisclosure = catalog.entries.some(
     entry => entry.kind === 'child' && entry.hasChildren,
   )
+  useEffect(() => {
+    if (stoppingId === undefined) return
+    const target = catalog.entries.find(entry => entry.kind === 'child' && entry.id === stoppingId)
+    if (target === undefined || (target.kind === 'child' && target.activity === 'inactive')) {
+      setStoppingId(undefined)
+    }
+  }, [catalog.entries, stoppingId])
+
+  const stop = async (address: Extract<SubagentAddress, { mode: 'continuable' }>): Promise<void> => {
+    setStoppingId(address.childSessionId)
+    setStopError(undefined)
+    const result = await interruptChild(address)
+    if (!result.ok) {
+      setStoppingId(undefined)
+      setStopError({ id: address.childSessionId, message: result.error.message })
+      return
+    }
+    refresh(parentSessionId)
+  }
   return (
     <>
       {emptyLoading && (
@@ -299,7 +361,13 @@ function CatalogRows({
         const label = entry.label ?? entry.id
         const mode = entry.mode === 'one-shot' ? t('mode.oneShot') : t('mode.continuable')
         const activity = entry.activity === 'running' ? t('activity.running') : t('activity.inactive')
-        const secondary = [summary?.title, mode, activity]
+        const turnState = entry.mode === 'continuable' ? entry.turnState : undefined
+        const secondary = [
+          summary?.title,
+          mode,
+          activity,
+          ...(turnState === 'queued' ? [t('activity.queued')] : []),
+        ]
           .filter(value => value !== undefined)
           .join(' · ')
         const totalTokens = tokenTotal(summary?.projectionValues?.tokenUsage)
@@ -372,7 +440,9 @@ function CatalogRows({
                   </button>
                 )}
               <div className={css.clickarea}>
-                <StateDot state={entry.activity === 'running' ? 'ongoing' : 'done'} />
+                <StateDot state={turnState === 'queued'
+                  ? 'warning'
+                  : entry.activity === 'running' ? 'ongoing' : 'done'} />
                 <span className={css.content}>
                   <span className={`${css.label} ${isCurrent ? css.currentLabel : ''}`}>{label}</span>
                   <span className={css.summary}>{secondary}</span>
@@ -390,8 +460,29 @@ function CatalogRows({
                     )}
                   </span>
                 )}
+                {entry.mode === 'continuable' && entry.activity === 'running' && (
+                  <button
+                    type="button"
+                    className={css.stop}
+                    disabled={stoppingId === entry.id}
+                    aria-label={t(stoppingId === entry.id ? 'stopping' : 'stop')}
+                    onKeyDown={event => { event.stopPropagation() }}
+                    onClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      void stop({ parentSessionId, childSessionId: entry.id, mode: 'continuable' })
+                    }}
+                  >
+                    {t(stoppingId === entry.id ? 'stopping' : 'stop')}
+                  </button>
+                )}
               </div>
             </div>
+            {stopError?.id === entry.id && (
+              <div className={css.stopError} role="alert">
+                {t('stopFailed')}: {stopError.message}
+              </div>
+            )}
             {isExpanded && !knownLeaf && (
               <div
                 role="group"
@@ -418,6 +509,7 @@ function CatalogRows({
                       level={level + 1}
                       now={now}
                       openChild={openChild}
+                      interruptChild={interruptChild}
                       refresh={refresh}
                       toggleBranch={toggleBranch}
                       closeCatalog={closeCatalog}
@@ -480,19 +572,22 @@ function catalogMenuPosition(trigger: HTMLButtonElement): CSSProperties {
 /** One trigger-plus-tree dropdown over the catalog rooted at `rootSessionId`. */
 function CatalogDropdown({
   rootSessionId, currentSessionId, displayTitle, openTitle, variant, separator = false,
-  useSessions, openChild, refresh, setCatalogOpen, t,
+  useSessions, openChild, interruptChild, refresh, setCatalogOpen, t,
 }: CatalogDropdownProps) {
   const ancestorSwitcher = variant === 'switcher' && openTitle !== undefined
   const catalogs = useSessions(state => state.subagentsByParent)
   const summaries = useSessions(state => state.byId)
+  const jobsBySession = useSessions(state => state.jobsBySession)
   const catalog = catalogs[rootSessionId]
   const [open, setOpen] = useState(false)
+  const [workspaceView, setWorkspaceView] = useState(false)
   const [menuPosition, setMenuPosition] = useState<CSSProperties>()
   const [now, setNow] = useState(() => Date.now())
   const [expanded, setExpanded] = useState<ReadonlySet<SessionId>>(() => new Set())
   const rootRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  const treeRef = useRef<HTMLDivElement>(null)
   const hoverOpenTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const hoverCloseTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const observedCatalogs = useRef(new Set<SessionId>())
@@ -510,9 +605,40 @@ function CatalogDropdown({
     () => indexSubagentDescendants(summaries).get(rootSessionId) ?? NO_DESCENDANTS,
     [rootSessionId, summaries],
   )
+  const workspaceJobs = useMemo(() => {
+    const owners = new Set<SessionId>([rootSessionId])
+    for (const candidate of Object.values(summaries)) {
+      let current: SessionSummary | undefined = candidate
+      const seen = new Set<SessionId>()
+      while (current?.origin === 'subagent' && current.parentId !== undefined && !seen.has(current.id)) {
+        seen.add(current.id)
+        if (current.parentId === rootSessionId) {
+          owners.add(candidate.id)
+          break
+        }
+        current = summaries[current.parentId]
+      }
+    }
+    return [...owners].flatMap(ownerId => (jobsBySession[ownerId] ?? []).map(job => ({ ownerId, job })))
+      .sort((left, right) => {
+        const leftLive = left.job.status === 'running' || left.job.status === 'stopping'
+        const rightLive = right.job.status === 'running' || right.job.status === 'stopping'
+        if (leftLive !== rightLive) return leftLive ? -1 : 1
+        if (leftLive) return left.job.startedAt - right.job.startedAt
+        return (right.job.finishedAt ?? right.job.startedAt) - (left.job.finishedAt ?? left.job.startedAt)
+      })
+  }, [jobsBySession, rootSessionId, summaries])
+  const liveJobCount = workspaceJobs.filter(({ job }) => (
+    job.status === 'running' || job.status === 'stopping'
+  )).length
   // The catalog can arrive before the session-list baseline; never undercount
   // the already-visible direct rows during that short bootstrap window.
   const descendantCount = Math.max(healthy.length, descendants.count)
+  const runningCount = Math.max(
+    descendants.runningCount,
+    healthy.filter(entry => entry.activity === 'running').length,
+  )
+  const aggregateTokens = descendantTokenTotal(rootSessionId, summaries)
   const totalCountKey = descendantCount === 1 ? 'count.total.one' : 'count.total.other'
   const runningCountKey = descendants.runningCount === 1 ? 'count.running.one' : 'count.running.other'
   // Session summaries can announce membership before the descriptor-backed catalog catches up.
@@ -578,6 +704,7 @@ function CatalogDropdown({
     }
     else {
       setOpen(false)
+      setWorkspaceView(false)
       setMenuPosition(undefined)
       closeAllCatalogs()
     }
@@ -644,6 +771,12 @@ function CatalogDropdown({
 
   useEffect(() => {
     if (!open) return
+    const timer = setInterval(() => { refresh(rootSessionId) }, 3_000)
+    return () => { clearInterval(timer) }
+  }, [open, refresh, rootSessionId])
+
+  useEffect(() => {
+    if (!open) return
     const placeMenu = (): void => {
       const trigger = triggerRef.current
       /* v8 ignore next -- native resize or scroll can outlive the trigger */
@@ -659,10 +792,10 @@ function CatalogDropdown({
   }, [open])
 
   useEffect(() => {
-    if (!open || descendants.runningCount === 0) return
+    if (!open || (descendants.runningCount === 0 && liveJobCount === 0)) return
     const timer = setInterval(() => { setNow(Date.now()) }, 1_000)
     return () => { clearInterval(timer) }
-  }, [open, descendants.runningCount])
+  }, [open, descendants.runningCount, liveJobCount])
 
   useEffect(() => () => {
     cancelHoverOpen()
@@ -688,19 +821,20 @@ function CatalogDropdown({
     cancelHoverClose()
     if (!open) return
     setOpen(false)
+    setWorkspaceView(false)
     closeAllCatalogs()
   }, [visible, open])
 
   if (!visible) return null
 
   const focusAt = (index: number): void => {
-    const items = treeItems(menuRef.current)
+    const items = treeItems(treeRef.current)
     if (items.length === 0) return
     items[(index + items.length) % items.length]?.focus()
   }
 
   const navigate = (event: KeyboardEvent<HTMLDivElement>): void => {
-    const items = treeItems(menuRef.current)
+    const items = treeItems(treeRef.current)
     const index = items.indexOf(document.activeElement as HTMLElement)
     if (event.key === 'Escape') {
       event.preventDefault()
@@ -776,28 +910,165 @@ function CatalogDropdown({
       {open && createPortal((
         <div
           ref={menuRef}
-          className={css.menu}
-          style={menuPosition}
-          role="tree"
-          aria-label={t('tree.aria')}
+          className={`${css.menu} ${workspaceView ? css.workspace : ''}`}
+          style={workspaceView ? undefined : menuPosition}
           onMouseEnter={cancelHoverClose}
-          onMouseLeave={scheduleHoverClose}
+          onMouseLeave={workspaceView ? undefined : scheduleHoverClose}
         >
-          <CatalogRows
-            parentSessionId={rootSessionId}
-            currentSessionId={currentSessionId}
-            catalog={presentedCatalog}
-            catalogs={catalogs}
-            summaries={summaries}
-            expanded={expanded}
-            level={1}
-            now={now}
-            openChild={openChild}
-            refresh={refresh}
-            toggleBranch={toggleBranch}
-            closeCatalog={() => { changeOpen(false) }}
-            t={t}
-          />
+          {workspaceView ? (
+            <div className={css.workspaceHeader} role="region" aria-label={t('workspace.title')}>
+              <div className={css.workspaceHeading}>
+                <h2>{t('workspace.title')}</h2>
+                <span>{t('overview', {
+                  running: runningCount,
+                  total: descendantCount,
+                  tokens: aggregateTokens === undefined
+                    ? '—'
+                    : `${aggregateTokens.coveredCount < descendantCount ? '≥' : ''}${formatTokens(aggregateTokens.total)}`,
+                })}</span>
+              </div>
+              <button
+                type="button"
+                className={css.workspaceToggle}
+                aria-expanded={workspaceView}
+                onClick={() => { setWorkspaceView(false) }}
+              >
+                {t('workspace.collapse')}
+              </button>
+              <div className={css.workspaceStats}>
+                <div className={css.workspaceStat}>
+                  <span>{t('workspace.agents')}</span>
+                  <strong>{descendantCount}</strong>
+                </div>
+                <div className={css.workspaceStat}>
+                  <span>{t('workspace.active')}</span>
+                  <strong>{catalog?.turnCapacity?.active ?? '—'}</strong>
+                </div>
+                <div className={css.workspaceStat}>
+                  <span>{t('workspace.queued')}</span>
+                  <strong>{catalog?.turnCapacity?.waiting ?? '—'}</strong>
+                </div>
+                <div className={css.workspaceStat}>
+                  <span>{t('workspace.backgroundJobs')}</span>
+                  <strong>{liveJobCount}/{workspaceJobs.length}</strong>
+                </div>
+                <div className={css.workspaceStat}>
+                  <span>{t('workspace.capacity')}</span>
+                  <strong>{catalog?.turnCapacity === undefined
+                    ? '—'
+                    : `${catalog.turnCapacity.active}/${catalog.turnCapacity.limit}`}</strong>
+                  {catalog?.turnCapacity !== undefined && (
+                    <div className={css.capacityTrack} role="meter"
+                      aria-label={t('capacity', catalog.turnCapacity)}
+                      aria-valuemin={0}
+                      aria-valuemax={catalog.turnCapacity.limit}
+                      aria-valuenow={catalog.turnCapacity.active}
+                    >
+                      <span style={{
+                        width: `${Math.min(100,
+                          catalog.turnCapacity.active / catalog.turnCapacity.limit * 100)}%`,
+                        ...(catalog.turnCapacity.waiting > 0
+                          ? { background: 'var(--dsw-alias-state-warn-primary)' }
+                          : {}),
+                      }} />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className={css.overview} role="status">
+                {t('overview', {
+                  running: runningCount,
+                  total: descendantCount,
+                  tokens: aggregateTokens === undefined
+                    ? '—'
+                    : `${aggregateTokens.coveredCount < descendantCount ? '≥' : ''}${formatTokens(aggregateTokens.total)}`,
+                })}
+              </div>
+              {catalog?.turnCapacity !== undefined && (
+                <div className={css.overview}>
+                  {t('capacity', catalog.turnCapacity)}
+                </div>
+              )}
+              <div className={css.menuToolbar}>
+                <span>{t('workspace.title')}</span>
+                <button
+                  type="button"
+                  className={css.workspaceToggle}
+                  aria-expanded={workspaceView}
+                  onClick={() => { setWorkspaceView(true) }}
+                >
+                  {t('workspace.expand')}
+                </button>
+              </div>
+            </>
+          )}
+          <div
+            ref={treeRef}
+            className={workspaceView ? css.workspaceTree : undefined}
+            role="tree"
+            aria-label={t('tree.aria')}
+          >
+            <CatalogRows
+              parentSessionId={rootSessionId}
+              currentSessionId={currentSessionId}
+              catalog={presentedCatalog}
+              catalogs={catalogs}
+              summaries={summaries}
+              expanded={expanded}
+              level={1}
+              now={now}
+              openChild={openChild}
+              interruptChild={interruptChild}
+              refresh={refresh}
+              toggleBranch={toggleBranch}
+              closeCatalog={() => { changeOpen(false) }}
+              t={t}
+            />
+          </div>
+          {workspaceView && workspaceJobs.length > 0 && (
+            <section className={css.workspaceJobs} aria-label={t('workspace.backgroundJobs')}>
+              <h3>{t('workspace.backgroundJobs')}</h3>
+              <ul className={css.workspaceJobList}>
+                {workspaceJobs.map(({ ownerId, job }) => {
+                  const live = job.status === 'running' || job.status === 'stopping'
+                  const elapsed = live
+                    ? now - job.startedAt
+                    : (job.finishedAt ?? job.startedAt) - job.startedAt
+                  const status = jobStatusLabel(job.status, t)
+                  const state = job.status === 'running'
+                    ? 'ongoing'
+                    : job.status === 'failed'
+                      ? 'error'
+                      : job.status === 'stopping' || job.status === 'killed'
+                        ? 'warning'
+                        : 'done'
+                  return (
+                    <li key={`${ownerId}:${job.id}`} className={css.workspaceJobRow}>
+                      <StateDot state={state} />
+                      <span className={css.workspaceJobKind}>{job.kind}</span>
+                      <span className={css.workspaceJobLabel} title={job.label}>{job.label}</span>
+                      <span className={css.workspaceJobOwner} title={summaries[ownerId]?.displayTitle ?? ownerId}>
+                        {summaries[ownerId]?.displayTitle ?? ownerId}
+                      </span>
+                      <span className={css.workspaceJobStatus} title={job.detail ?? status}>
+                        {job.detail ?? status}
+                      </span>
+                      <span className={css.workspaceJobDuration}
+                        title={t(live ? 'workspace.job.duration.live' : 'workspace.job.duration.done', {
+                          duration: formatDuration(elapsed, t),
+                        })}
+                      >
+                        {formatDuration(elapsed, t)}
+                      </span>
+                    </li>
+                  )
+                })}
+              </ul>
+            </section>
+          )}
         </div>
       ), document.body)}
     </div>
@@ -811,13 +1082,13 @@ function CatalogDropdown({
  */
 export function SubagentHeaderLineage({
   lineageSessionId, displayTitle, openTitle,
-  useSessions, openChild, refresh, setCatalogOpen, t,
+  useSessions, openChild, interruptChild, refresh, setCatalogOpen, t,
 }: SubagentHeaderLineageProps) {
   const parentId = useSessions((state) => {
     const summary = state.byId[lineageSessionId]
     return summary?.origin === 'subagent' ? summary.parentId : undefined
   })
-  const shared = { useSessions, openChild, refresh, setCatalogOpen, t }
+  const shared = { useSessions, openChild, interruptChild, refresh, setCatalogOpen, t }
   if (parentId === undefined) {
     return (
       <CatalogDropdown

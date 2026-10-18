@@ -50,6 +50,9 @@ export function apply(ctx: ClientContext): void {
     openChild(address: SubagentAddress) {
       sessions.openSubagent(address)
     },
+    interruptChild(address) {
+      return sessions.interruptSubagent(address)
+    },
     refresh(parentSessionId: SessionId) {
       void sessions.refreshSubagents(parentSessionId)
     },

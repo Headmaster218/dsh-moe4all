@@ -82,7 +82,13 @@ function bench(options: {
   })
   const ctx = new Context()
   ctx.provide('agents', { get: getAgent })
-  ctx.provide('subagents', { listChildren, followup, interrupt })
+  ctx.provide('subagents', {
+    listChildren,
+    followup,
+    interrupt,
+    continuableTurnCapacity: () => ({ active: 2, waiting: 1, limit: 4 }),
+    continuableTurnState: () => 'queued' as const,
+  })
   ctx.provide('sessions', {
     get: (id: SessionId) => options.liveChild === true && id === CHILD
       ? { id: CHILD, header: childHeader, events: childEvents }
@@ -127,8 +133,9 @@ describe('subagent gateway', () => {
       ok: true,
       value: {
         parentAvailable: false,
+        turnCapacity: { active: 2, waiting: 1, limit: 4 },
         entries: [
-          { kind: 'child', mode: 'continuable' },
+          { kind: 'child', mode: 'continuable', turnState: 'queued' },
           { kind: 'child', mode: 'one-shot' },
           { kind: 'diagnostic' },
         ],

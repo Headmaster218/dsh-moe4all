@@ -53,6 +53,7 @@ import type { ContinuableCreateRequest, ContinuableCreateSpec, SubagentResult, S
 import type { ActivationObserver, ActivationTerminal } from './lifecycle.ts'
 import { SubagentError } from './error.ts'
 import type SubagentActivationSetupRegistry from './activation-setup-registry.ts'
+import type { TurnCapacityGate } from './turn-capacity.ts'
 
 /** Attribution for a model coordinator's follow-up to one of its children. */
 export interface CoordinatorMessageSource {
@@ -241,6 +242,8 @@ interface Activation {
    * not exist, so its teardown owes the parent no settlement account.
    */
   announced: boolean
+  /** Release handle for the current model-turn capacity slot, if admitted. */
+  releaseTurnCapacity: (() => void) | undefined
   /** Renewed whenever a settlement watcher must re-observe quiescence. */
   poke: PromiseWithResolvers<void>
 }
@@ -373,6 +376,7 @@ export class SubagentContinuationManager {
     private readonly ctx: Context,
     private readonly host: ContinuationHost,
     private readonly setupRegistry: SubagentActivationSetupRegistry,
+    private readonly turnCapacity: TurnCapacityGate,
   ) {
     // Ordinary Cordis owner effects unwind in reverse registration order, which
     // cannot express the dynamic child graph. Register the private scope's
@@ -1098,6 +1102,7 @@ export class SubagentContinuationManager {
       disposal: undefined,
       accepted: new Set(),
       announced: false,
+      releaseTurnCapacity: undefined,
       poke: Promise.withResolvers<void>(),
     }
     // After transfer, any failure must dispose the created handle, remove the
@@ -1119,6 +1124,22 @@ export class SubagentContinuationManager {
       })
       handle.agent.ctx.on('agent/inbox/discarded', ({ message }) => {
         if (activation.accepted.delete(message.id)) this.wake(activation)
+      })
+      handle.agent.ctx.on('agent/pre-step', async ({ signal }, next) => {
+        if (activation.releaseTurnCapacity === undefined) {
+          activation.releaseTurnCapacity = await this.turnCapacity.acquire(
+            signal,
+            activation.childId,
+            activation.parentSession,
+          )
+        }
+        return next()
+      })
+      handle.agent.ctx.on('agent/status', ({ status }) => {
+        if (status !== 'idle' || activation.releaseTurnCapacity === undefined) return
+        const release = activation.releaseTurnCapacity
+        activation.releaseTurnCapacity = undefined
+        release()
       })
       // Agent creation committed setup at its publication boundary;
       // revocations from here on are immediate live revocation.

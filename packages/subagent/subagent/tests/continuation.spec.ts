@@ -65,7 +65,10 @@ afterEach(async () => {
 })
 
 /** Boot the full continuable stack: loop, persistence, providers, and subagents. */
-async function setupWith(adapter: LlmAdapter, options: { persistence?: boolean } = {}) {
+async function setupWith(adapter: LlmAdapter, options: {
+  persistence?: boolean
+  maxConcurrentContinuableTurns?: number
+} = {}) {
   const ctx = new Context()
   await mountAgentLoopTestDependencies(ctx)
   let disposePersistence: (() => Promise<void>) | undefined
@@ -81,7 +84,9 @@ async function setupWith(adapter: LlmAdapter, options: { persistence?: boolean }
     })
   }
   await ctx.plugin(AgentLoop, { agents: [] })
-  await ctx.plugin(SubagentRuntime)
+  await ctx.plugin(SubagentRuntime, options.maxConcurrentContinuableTurns === undefined
+    ? {}
+    : { maxConcurrentContinuableTurns: options.maxConcurrentContinuableTurns })
   await ctx.plugin(SubagentSpawn, { providerName: 'spawn' })
   await ctx.plugin(SubagentFork, { providerName: 'fork' })
   ctx.llm.registerAdapter(['mock'], adapter)
@@ -180,6 +185,79 @@ function observeCancel(agent: Agent, callback: () => void): void {
 }
 
 describe('SubagentRuntime.startContinuable', () => {
+  it('queues model turns at the configured limit and cancels a queued child without leaking capacity', async () => {
+    const releaseFirst = Promise.withResolvers<undefined>()
+    const adapter = new GatedAdapter([
+      { chunks: textResponse('first answer'), gate: releaseFirst.promise },
+    ])
+    const { ctx, parent } = await setupWith(adapter, { maxConcurrentContinuableTurns: 1 })
+    parkParent(ctx, parent)
+
+    const first = await ctx.subagents.startContinuable(startSpec(parent))
+    const second = await ctx.subagents.startContinuable(startSpec(parent))
+    await vi.waitFor(() => { expect(adapter.requests).toHaveLength(1) })
+    await vi.waitFor(() => {
+      expect(ctx.subagents.continuableTurnState(second.childId)).toBe('queued')
+    })
+
+    expect(ctx.subagents.continuableTurnState(first.childId)).toBe('active')
+    expect(ctx.subagents.continuableTurnCapacity()).toEqual({ active: 1, waiting: 1, limit: 1 })
+    ctx.subagents.interrupt(second.childId, { kind: 'user', parentSessionId: parent.id })
+    await waitNoActivation(ctx, second.childId)
+    expect(ctx.subagents.continuableTurnState(second.childId)).toBeUndefined()
+    expect(ctx.subagents.continuableTurnCapacity()).toEqual({ active: 1, waiting: 0, limit: 1 })
+
+    releaseFirst.resolve(undefined)
+    await waitNoActivation(ctx, first.childId)
+    expect(ctx.subagents.continuableTurnCapacity()).toEqual({ active: 0, waiting: 0, limit: 1 })
+    expect(adapter.requests).toHaveLength(1)
+  })
+
+  it('rotates waiting turns between parent sessions before admitting a busy parent backlog', async () => {
+    const releaseFirst = Promise.withResolvers<undefined>()
+    const releaseSecond = Promise.withResolvers<undefined>()
+    const releasePeer = Promise.withResolvers<undefined>()
+    const adapter = new GatedAdapter([
+      { chunks: textResponse('first answer'), gate: releaseFirst.promise },
+      { chunks: textResponse('second answer'), gate: releaseSecond.promise },
+      { chunks: textResponse('peer answer'), gate: releasePeer.promise },
+      { chunks: textResponse('third answer') },
+    ])
+    const { ctx, parent } = await setupWith(adapter, { maxConcurrentContinuableTurns: 1 })
+    const peerParent = ctx.agentLoop.create(SessionId('peer-parent'), { provider: 'mock', model: 'mock' })
+    parkParent(ctx, parent)
+    parkParent(ctx, peerParent)
+
+    const first = await ctx.subagents.startContinuable(startSpec(parent))
+    await vi.waitFor(() => { expect(adapter.requests).toHaveLength(1) })
+    const second = await ctx.subagents.startContinuable(startSpec(parent))
+    const third = await ctx.subagents.startContinuable(startSpec(parent))
+    const peer = await ctx.subagents.startContinuable(startSpec(peerParent))
+    await vi.waitFor(() => {
+      expect(ctx.subagents.continuableTurnState(second.childId)).toBe('queued')
+      expect(ctx.subagents.continuableTurnState(third.childId)).toBe('queued')
+      expect(ctx.subagents.continuableTurnState(peer.childId)).toBe('queued')
+    })
+
+    releaseFirst.resolve(undefined)
+    await vi.waitFor(() => { expect(adapter.requests).toHaveLength(2) })
+    expect(ctx.subagents.continuableTurnState(second.childId)).toBe('active')
+    releaseSecond.resolve(undefined)
+    await vi.waitFor(() => { expect(adapter.requests).toHaveLength(3) })
+    expect(ctx.subagents.continuableTurnState(peer.childId)).toBe('active')
+    expect(ctx.subagents.continuableTurnState(third.childId)).toBe('queued')
+
+    releasePeer.resolve(undefined)
+    await waitNoActivation(ctx, peer.childId)
+    await vi.waitFor(() => { expect(adapter.requests).toHaveLength(4) })
+    await Promise.all([
+      waitNoActivation(ctx, first.childId),
+      waitNoActivation(ctx, second.childId),
+      waitNoActivation(ctx, third.childId),
+    ])
+    expect(ctx.subagents.continuableTurnCapacity()).toEqual({ active: 0, waiting: 0, limit: 1 })
+  })
+
   it('returns both identities at inbox acceptance, without waiting for the turn or the log', async () => {
     const { ctx, parent, adapter } = await setup([textResponse('first answer')])
     const enqueued: { id: MessageId; loggedYet: boolean }[] = []

@@ -2538,13 +2538,20 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         try {
           const entries = await ctx.subagents.listChildren(request.payload.parentSessionId, signal)
           return ok(request, {
-            entries: entries.map(entry => entry.kind === 'child'
-              ? {
+            entries: entries.map(entry => {
+              if (entry.kind !== 'child') return entry
+              const activity = ctx.agents.get(entry.id)?.status === 'running' ? 'running' : 'inactive'
+              const turnState = entry.mode === 'continuable'
+                ? ctx.subagents.continuableTurnState(entry.id)
+                : undefined
+              return {
                 ...entry,
-                activity: ctx.agents.get(entry.id)?.status === 'running' ? 'running' : 'inactive',
+                activity,
+                ...(turnState === undefined ? {} : { turnState }),
               }
-              : entry),
+            }),
             parentAvailable: ctx.agents.get(request.payload.parentSessionId) !== undefined,
+            turnCapacity: ctx.subagents.continuableTurnCapacity(),
           })
         } catch (error: unknown) {
           if (signal?.aborted || (error instanceof SubagentError && error.code === 'CANCELLED')) {

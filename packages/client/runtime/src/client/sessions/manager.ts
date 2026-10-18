@@ -219,6 +219,21 @@ export class SessionManager {
     this.notifier.notifyNow()
   }
 
+  /**
+   * Interrupt one continuable child by its durable catalog address.
+   * @param address - exact parent/child address from a healthy catalog row.
+   * @returns the Host admission result; acceptance is not target quiescence.
+   */
+  async interruptSubagent(
+    address: Extract<SubagentAddress, { mode: 'continuable' }>,
+  ): Promise<RpcResult<{ accepted: true }>> {
+    try {
+      return (await this.api.subagents.interrupt(address)).result
+    } catch (error) {
+      return transportError(error)
+    }
+  }
+
   /** Clear the selection (the layout falls to the no-session view state). */
   clearSelection(): void {
     this.selected = undefined

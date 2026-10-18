@@ -45,6 +45,12 @@ export interface ISessions {
    */
   openSubagent(address: SubagentAddress): void
   /**
+   * Interrupt the current turn of one catalog-addressed continuable child.
+   * @param address - exact parent/child address from a healthy catalog row.
+   * @returns the Host admission result; acceptance is not target quiescence.
+   */
+  interruptSubagent(address: Extract<SubagentAddress, { mode: 'continuable' }>): Promise<RpcResult<{ accepted: true }>>
+  /**
    * Resolve an already discovered direct-parent address without opening it.
    * @param id - possible addressed child id.
    * @returns the retained address, when present.
