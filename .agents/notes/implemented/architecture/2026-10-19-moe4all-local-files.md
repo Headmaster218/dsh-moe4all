@@ -6,6 +6,8 @@ Status: implemented
 
 Local files use explicit copy or reference gestures. Copies are stored under a unique workspace upload directory and never overwrite existing files; references verify an existing path without granting preview access outside the workspace. The model receives a path in ordinary user draft text and reads content through its existing tools and permissions. Mobile upload plugins are unchanged. Image-only drops retain image attachment behavior. General file drops use left/right copy/reference lanes; browsers withholding original paths require a manually entered reference path.
 
+Closing admission or changing the UI's session aborts the active request and clears the dialog. A transport completing after that cancellation cannot append a stale path to either draft. Input submission admission is rechecked before a successful path is appended.
+
 ## Access and limits
 
 The gateway resolves the root from the selected session, checks canonical path containment, refuses Git metadata and linked escapes, and bounds upload/preview bytes and directory results. Operations do not resume Agents. Configurable gateway limits default to 32 MiB per file and 5000 directory entries. Binary preview types use a MIME whitelist. Explicit external references return a verified path only, not file contents.

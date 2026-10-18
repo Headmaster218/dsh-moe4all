@@ -44,7 +44,10 @@ export function LocalFiles({ input, session, fileOperation, appendFile, t }: Loc
   const request = useRef<AbortController | null>(null)
   const locked = session.removed || input.phase === 'submitting' || input.phase === 'adjudicating'
   const close = (): void => { request.current?.abort(); setOpen(false); setBusy(false); setProgress('') }
-  useEffect(() => () => { request.current?.abort() }, [])
+  useEffect(() => {
+    setOpen(false); setBusy(false); setPending([]); setPath(''); setProgress(''); setError(null)
+    return () => { request.current?.abort() }
+  }, [session.sessionId])
   const copy = async (files: readonly File[]): Promise<void> => {
     request.current?.abort()
     const controller = new AbortController(); request.current = controller
