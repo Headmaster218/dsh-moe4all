@@ -4,6 +4,7 @@
  */
 
 import type { RpcRequest, RpcResponse } from './rpc.ts'
+import type { WorkspaceFileRequest, WorkspaceFileReply } from './workspace-files.ts'
 
 /** One directory row of a listing: a child entry or a breadcrumb ancestor. */
 export interface DirectoryEntry {
@@ -34,6 +35,8 @@ export interface DirectoryListing {
 
 /** Host-level unary methods. */
 export interface HostApi {
+  /** Explicit user file operations scoped to the selected session's workspace. */
+  workspaceFiles(request: RpcRequest<WorkspaceFileRequest>, signal: AbortSignal): Promise<RpcResponse<WorkspaceFileReply>>
   /**
    * One-shot host snapshot. Empty payload uses the literal `{}` (extend in place when fields arrive).
    * version = the host app's (apps/cli) package.json version; cwd = the host process working

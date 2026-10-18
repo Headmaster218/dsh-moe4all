@@ -16,6 +16,7 @@ import { hostFrameSchema, muxFrameSchema } from '../api/events.schema.ts'
 import {
   hostCreateDirectoryValueSchema, hostDescribeValueSchema,
   hostListDirectoryValueSchema, hostOpenPathValueSchema, hostPickDirectoryValueSchema,
+  hostWorkspaceFilesValueSchema,
 } from '../api/host.schema.ts'
 import {
   sessionCancelValueSchema,
@@ -106,6 +107,7 @@ export interface IApiClient {
     interrupt(payload: RequestPayload<'subagent.interrupt'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'subagent.interrupt'>>>
   }
   host: {
+    workspaceFiles(payload: RequestPayload<'host.workspaceFiles'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'host.workspaceFiles'>>>
     describe(payload: RequestPayload<'host.describe'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'host.describe'>>>
     pickDirectory(payload: RequestPayload<'host.pickDirectory'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'host.pickDirectory'>>>
     listDirectory(payload: RequestPayload<'host.listDirectory'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'host.listDirectory'>>>
@@ -187,6 +189,7 @@ const UNARY_VALUE_SCHEMAS: { [K in keyof RpcMethodMap]: z.ZodType<Wire<ResponseV
   'subagent.prompt': subagentPromptValueSchema,
   'subagent.interrupt': subagentInterruptValueSchema,
   'host.describe': hostDescribeValueSchema,
+  'host.workspaceFiles': hostWorkspaceFilesValueSchema,
   'host.pickDirectory': hostPickDirectoryValueSchema,
   'host.listDirectory': hostListDirectoryValueSchema,
   'host.createDirectory': hostCreateDirectoryValueSchema,
@@ -432,6 +435,7 @@ export abstract class AbstractApiClient implements IApiClient {
   }
 
   readonly host: IApiClient['host'] = {
+    workspaceFiles: (payload, signal) => this.callUnary('host.workspaceFiles', payload, signal),
     describe: (payload, signal) => this.callUnary('host.describe', payload, signal),
     // A native system dialog is user-paced and may legitimately stay open
     // longer than the normal unary deadline. Caller/connection aborts remain.

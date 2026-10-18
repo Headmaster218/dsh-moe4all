@@ -1,5 +1,6 @@
 /** Registers the conversation components, shared store, and service callbacks. */
 import type { Context } from '@deepseek-ai/cordis'
+import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 import { resolveSlotLabel, type BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
 import {
   resolveWorkspacePath, type ISessions, type SessionId,
@@ -37,6 +38,8 @@ import { ConversationSession, ConversationSessionHeader } from './skeleton/Conve
 import { DetailsPanel } from './skeleton/DetailsPanel.tsx'
 import { QuestionDirectory } from './navigation/QuestionDirectory.tsx'
 import { readQuestions, revealQuestion } from './navigation/questions.ts'
+import { LocalFiles } from './files/LocalFiles.tsx'
+import type { WorkspaceFileOperation } from '@deepseek-ai/dsh-api-remotes/client'
 import { en, NS, zh, type ConversationKey } from './locales.ts'
 import { registerConversationNodes } from './conversation-nodes/register.ts'
 import { registerChatNodeRenderers } from './chat/register-node-renderers.ts'
@@ -115,6 +118,7 @@ function selectApproval({ interactions }: ComposerChainProps): ApprovalWait | nu
  * @param ctx - Client root context.
  */
 export function apply(ctx: Context): void {
+  const connection = ctx.get('connection') as ConnectionHandle
   const sessions = ctx.sessions
   const workspaces = ctx.workspaces
   const layout = ctx.layout
@@ -176,6 +180,25 @@ export function apply(ctx: Context): void {
   // here, and the bar reads its own session's store. It cannot flow the other
   // way: this package must not import the plugins that would know.
   const composerBlocks = new ComposerBlockRegistry()
+
+  slots.inject('conversation.input.left', () => slots.register({
+    name: 'conversation.input.left', id: 'local-files', order: 5, locale: NS,
+    inject: (sessionId: SessionId) => ({
+      fileOperation: async (operation: WorkspaceFileOperation, signal: AbortSignal) => {
+        const response = await connection.api.host.workspaceFiles({ ...operation, sessionId }, signal)
+        if (!response.result.ok) throw new Error(response.result.error.message)
+        return response.result.value
+      },
+      appendFile: (path: string) => {
+        const shell = inputHub.shell(sessionId)
+        if (shell.snapshot.phase === 'adjudicating' || shell.snapshot.phase === 'submitting'
+          || composerBlocks.storeFor(sessionId).getSnapshot() !== undefined) throw new Error(`${t('files.inputBusy')}: ${path}`)
+        if (/[\x00-\x1f\x7f"]/.test(path)) throw new Error(t('files.invalidPath'))
+        const draft = shell.exportDraft()
+        shell.setDraft(`${draft}${draft === '' || /\s$/.test(draft) ? '' : '\n'}@"${path}" `)
+      },
+    }),
+  }, LocalFiles))
 
   // The input machine feeds every session-scope slot
   // component through the standard provide channel — the 'input' hook plus
@@ -281,8 +304,8 @@ export function apply(ctx: Context): void {
         const address = session.getSnapshot().subagent?.address
         const payload = { ...beforeSeq === undefined ? {} : { beforeSeq }, maxMessages: 50 }
         const response = address === undefined
-          ? await ctx.connection.api.sessions.history({ sessionId, ...payload }, pageSignal)
-          : await ctx.connection.api.subagents.history({ ...address, ...payload }, pageSignal)
+          ? await connection.api.sessions.history({ sessionId, ...payload }, pageSignal)
+          : await connection.api.subagents.history({ ...address, ...payload }, pageSignal)
         if (!response.result.ok) throw new Error(response.result.error.message)
         return response.result.value
       }, signal),

@@ -6,6 +6,22 @@ import { z } from 'zod'
 import type { DirectoryEntry } from './host.ts'
 import type { RequestPayload, ResponseValue } from './rpc-map.ts'
 import type { Wire } from './rpc.schema.ts'
+import { sessionIdSchema } from './sessions.schema.ts'
+
+/** Workspace file request; the payload cap precedes byte decoding. */
+export const hostWorkspaceFilesRequestSchema = z.intersection(z.object({ sessionId: sessionIdSchema }), z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('list'), path: z.string() }),
+  z.object({ kind: z.literal('read'), path: z.string().min(1) }),
+  z.object({ kind: z.literal('upload'), name: z.string().min(1).max(240), dataBase64: z.string().max(44739244) }),
+  z.object({ kind: z.literal('reference'), path: z.string().min(1) }),
+])) satisfies z.ZodType<Wire<RequestPayload<'host.workspaceFiles'>>>
+
+/** Bounded directory, preview and imported path wire results. */
+export const hostWorkspaceFilesValueSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('directory'), path: z.string(), truncated: z.boolean(), entries: z.array(z.object({ name: z.string(), path: z.string(), directory: z.boolean() })) }),
+  z.object({ kind: z.literal('file'), path: z.string(), mime: z.string(), size: z.number().nonnegative(), dataBase64: z.string() }),
+  z.object({ kind: z.literal('imported'), path: z.string() }),
+]) satisfies z.ZodType<Wire<ResponseValue<'host.workspaceFiles'>>>
 
 /** host.describe request payload (empty object literal). */
 export const hostDescribeRequestSchema = z.object({}) satisfies z.ZodType<Wire<RequestPayload<'host.describe'>>>

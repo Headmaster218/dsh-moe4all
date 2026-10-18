@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname } from 'node:path'
+import { workspaceFiles, DEFAULT_WORKSPACE_FILE_LIMITS, type WorkspaceFileLimits } from './workspace-files.ts'
 import { z as zod } from 'zod'
 import type { Context } from '@deepseek-ai/cordis'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
@@ -575,6 +576,8 @@ function directoryError(error: unknown): RpcError {
 
 /** Resolved Agent model and project-directory defaults consumed by the API implementation. */
 export interface ApiProxyDefaults {
+  /** Deployment-controlled preview/upload bounds. */
+  workspaceFileLimits?: WorkspaceFileLimits
   /**
    * The model selection a session starts from when its own log names none. Read on
    * every access rather than captured, so a default saved during this process
@@ -2821,6 +2824,17 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
     },
 
     host: {
+      async workspaceFiles(request, signal) {
+        const { sessionId } = request.payload
+        try {
+          const source = ctx.sessions.get(sessionId)
+          const cwd = source?.header.cwd ?? (await inspectServable(sessionId)).meta.cwd
+          if (cwd === undefined) throw new Error('Session has no workspace directory')
+          return ok(request, await workspaceFiles(cwd, request.payload, defaults.workspaceFileLimits ?? DEFAULT_WORKSPACE_FILE_LIMITS, signal))
+        } catch (error: unknown) {
+          return err(request, { code: signal.aborted ? 'cancelled' : 'internal', message: error instanceof Error ? error.message : String(error), details: {} })
+        }
+      },
       describe(request) {
         // TODO: version should read apps/cli's package.json; placeholder for now.
         const selection = defaults.defaultModelSelection()

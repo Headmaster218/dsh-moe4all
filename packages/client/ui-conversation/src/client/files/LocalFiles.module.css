@@ -1,0 +1,9 @@
+.columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.section { min-width: 0; display: flex; flex-direction: column; align-items: stretch; gap: 12px; }
+.section h3 { margin: 0; font-size: 14px; }
+.section ul { padding-left: 16px; max-height: 140px; overflow: auto; overflow-wrap: anywhere; }
+.path { min-width: 0; padding: 8px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-base); }
+.error { color: var(--dsw-alias-label-primary); overflow-wrap: anywhere; margin-top: 12px; }
+.drop { position: fixed; inset: 0; z-index: 1500; pointer-events: none; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 24px; background: var(--dsw-alias-bg-base); opacity: .96; }
+.drop div { display: grid; place-items: center; border: 2px dashed var(--dsw-alias-label-secondary); border-radius: 8px; color: var(--dsw-alias-label-primary); font-size: 20px; }
+@media (max-width: 540px) { .columns { grid-template-columns: minmax(0, 1fr); } }

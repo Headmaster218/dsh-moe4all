@@ -2616,6 +2616,9 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
       interrupt: request => Promise.resolve(ok(request, { accepted: true as const })),
     },
     host: {
+      workspaceFiles: request => request.payload.kind === 'list'
+        ? ok(request, { kind: 'directory' as const, path: '', entries: [], truncated: false })
+        : err(request, { code: 'internal', message: 'No workspace file has been registered in this fixture', details: {} }),
       describe: request => ok(request, {
         version: '0.0.0-fixture', cwd: '/tmp/fixture', attachedSessions, home: FIXTURE_HOME, canOpenPath: true,
       }),
@@ -3192,6 +3195,7 @@ export class FixtureApiClient extends AbstractApiClient {
       case 'subagent.prompt': return this.api.subagents.prompt(request, signal)
       case 'subagent.interrupt': return this.api.subagents.interrupt(request)
       case 'host.describe': return this.api.host.describe(request)
+      case 'host.workspaceFiles': return this.api.host.workspaceFiles(request, signal)
       case 'host.pickDirectory': return this.api.host.pickDirectory(request, new AbortController().signal)
       case 'host.listDirectory': return this.api.host.listDirectory(request, new AbortController().signal)
       case 'host.createDirectory': return this.api.host.createDirectory(request)

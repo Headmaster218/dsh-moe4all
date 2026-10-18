@@ -17,6 +17,7 @@ import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import type { ApiProxy } from './api/index.ts'
 import { createApiProxy, DEFAULT_COLD_BLANK_PROBE_MAX_BYTES } from './api-proxy.ts'
+import { DEFAULT_WORKSPACE_FILE_LIMITS } from './workspace-files.ts'
 import {
   DEFAULT_SESSION_LOG_COMPRESSION_LEVEL,
   type SessionLogCompressionLevel,
@@ -39,6 +40,10 @@ declare module '@deepseek-ai/cordis' {
 
 /** Gateway plugin configuration. */
 export interface Config {
+  /** Maximum bytes accepted by a user upload or preview. */
+  workspaceFileMaxBytes?: number
+  /** Maximum visible children in one workspace directory. */
+  workspaceFileMaxEntries?: number
   /**
    * Whether this deployment can hand paths to a native desktop opener —
    * the `hasDocument` capability the agent-preset roster reports. Absent,
@@ -73,6 +78,8 @@ export class ApiProxyService extends Service implements ApiProxy {
   ]
 
   static Config: z<Config> = z.object({
+    workspaceFileMaxBytes: z.natural().min(1).max(32 * 1024 * 1024).default(DEFAULT_WORKSPACE_FILE_LIMITS.maxBytes),
+    workspaceFileMaxEntries: z.natural().min(1).default(DEFAULT_WORKSPACE_FILE_LIMITS.maxEntries),
     nativeOpen: z.boolean(),
     sessionExportCompressionLevel: z.number().step(1).min(0).max(9)
       .default(DEFAULT_SESSION_LOG_COMPRESSION_LEVEL) as z<SessionLogCompressionLevel>,
@@ -99,6 +106,10 @@ export class ApiProxyService extends Service implements ApiProxy {
       defaultModelSelection: () => ctx.agentDefaultModel.currentSelection(),
       saveDefaultModelSelection: selection => ctx.agentDefaultModel.saveSelection(selection),
       cwd: process.cwd(),
+      workspaceFileLimits: {
+        maxBytes: config.workspaceFileMaxBytes ?? DEFAULT_WORKSPACE_FILE_LIMITS.maxBytes,
+        maxEntries: config.workspaceFileMaxEntries ?? DEFAULT_WORKSPACE_FILE_LIMITS.maxEntries,
+      },
       ...config.nativeOpen === undefined ? {} : { canOpenPath: () => config.nativeOpen as boolean },
       ...(config.sessionExportCompressionLevel === undefined
         ? {}

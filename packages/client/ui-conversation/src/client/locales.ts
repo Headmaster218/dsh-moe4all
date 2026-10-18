@@ -10,6 +10,15 @@ const PLAN_NEXT_ACTION_EN = 'describe your task to generate plan'
 
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {
+  'files.title': '添加本地文件',
+  'files.copy': '复制到工作区',
+  'files.reference': '引用原文件',
+  'files.choose': '选择文件',
+  'files.path': '原文件完整路径',
+  'files.failed': '文件操作没有返回有效路径',
+  'files.inputBusy': '文件已就绪，但输入框正在提交；请稍后添加路径',
+  'files.invalidPath': '路径包含无法引用的字符',
+  'files.tooLarge': '文件超过 32 MiB，请使用原路径引用',
   'questions.title': '问题目录',
   'questions.search': '搜索本会话的提问',
   'questions.loading': '正在读取会话记录…',
@@ -193,6 +202,15 @@ export type ConversationKey = keyof typeof zh
 
 /** English dictionary, checked complete against the zh key set. */
 export const en = {
+  'files.title': 'Add local files',
+  'files.copy': 'Copy to workspace',
+  'files.reference': 'Reference original file',
+  'files.choose': 'Choose files',
+  'files.path': 'Full original file path',
+  'files.failed': 'The file operation returned no usable path',
+  'files.inputBusy': 'File ready, but input is submitting; add the path after submission',
+  'files.invalidPath': 'The path contains characters that cannot be referenced',
+  'files.tooLarge': 'File exceeds 32 MiB; reference its original path instead',
   'questions.title': 'Questions',
   'questions.search': 'Search questions in this conversation',
   'questions.loading': 'Loading conversation history...',

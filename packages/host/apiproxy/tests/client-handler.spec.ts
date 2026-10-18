@@ -71,6 +71,7 @@ function scriptedApi(overrides: {
       ...overrides.subagents,
     },
     host: {
+      workspaceFiles: r => ok(r, { kind: 'directory' as const, path: '', entries: [], truncated: false }),
       describe: r => ok(r, {
         version: '0-test', cwd: '/t', attachedSessions: 0, home: '/h', canOpenPath: true,
       }),
@@ -148,6 +149,16 @@ function recorderInto(seen: { method: string; payload: unknown }[]) {
 }
 
 describe('unary round trip', () => {
+  it('round-trips session-scoped workspace file operations with validated results', async () => {
+    const operation = vi.fn<ApiProxy['host']['workspaceFiles']>(async request => ok(request, {
+      kind: 'file' as const, path: 'note.md', mime: 'text/markdown', size: 2, dataBase64: 'aGk=',
+    }))
+    const result = await client(scriptedApi({ host: { workspaceFiles: operation } })).host.workspaceFiles({
+      sessionId: sid('s1'), kind: 'read', path: 'note.md',
+    })
+    expect(result.result).toEqual({ ok: true, value: { kind: 'file', path: 'note.md', mime: 'text/markdown', size: 2, dataBase64: 'aGk=' } })
+    expect(operation.mock.calls[0]?.[0].payload).toEqual({ sessionId: 's1', kind: 'read', path: 'note.md' })
+  })
   it('carries payload out and value back through the full wire form', async () => {
     let seen: RpcRequest<{ cursor?: string }> | undefined
     const api = scriptedApi({
