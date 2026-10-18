@@ -167,7 +167,7 @@ export function Workbench({ useStore, actions, fileOperation, getChanges, openNa
         <span>{page + 1} / {preview.slides.length}</span>
         <button aria-label={t('workbench.next')} title={t('workbench.next')} disabled={page + 1 >= preview.slides.length} onClick={() => { setPage(current => current + 1) }}><IconChevronRightOutline14 /></button>
       </div>}
-      <div className={css.preview}>{body}</div>
+      <div className={css.preview}>{!expanded && body}</div>
       {active === null && <div className={css.empty}>{t('workbench.selectFile')}</div>}
     </>}
     {mode === 'changes' && <div className={css.changes}>

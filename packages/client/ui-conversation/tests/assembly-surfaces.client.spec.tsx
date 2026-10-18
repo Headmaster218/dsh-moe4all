@@ -34,6 +34,10 @@ function AppRoot({ renderSlot }: AppRootProps) {
   return <>{renderSlot('conversation', {})}</>
 }
 
+function AppRootWithDetails({ renderSlot }: AppRootProps) {
+  return <>{renderSlot('conversation', {})}{renderSlot('details', {})}</>
+}
+
 const LAYOUT_CHILDREN = {
   'conversation': { kind: 'single', scope: 'session-maybe' },
   'details': { kind: 'single', scope: 'session' },
@@ -48,7 +52,7 @@ function WorkspaceProbe({ open }: EmptyWorkspaceOwnerProps) {
   )
 }
 
-async function bench(opts?: { blank?: boolean; workspaceFiles?: ReturnType<typeof vi.fn> }) {
+async function bench(opts?: { blank?: boolean; details?: boolean; workspaceFiles?: ReturnType<typeof vi.fn> }) {
   const runtime = await SlotTestRuntime.create()
   runtime.provide('connection', { api: { settings: {}, host: { workspaceFiles: opts?.workspaceFiles } }, isLoopback: false })
   // The plugin injects both; these specs exercise no settings path.
@@ -70,12 +74,27 @@ async function bench(opts?: { blank?: boolean; workspaceFiles?: ReturnType<typeo
       prompt: vi.fn<ISession['prompt']>(async () => ({ ok: true, value: { accepted: true } })),
     },
   })
-  await runtime.root.declare(LAYOUT_CHILDREN, AppRoot)
+  await runtime.root.declare(LAYOUT_CHILDREN, opts?.details === true ? AppRootWithDetails : AppRoot)
   await runtime.mount({ inject: [...inject], apply })
   return runtime
 }
 
 describe('assembled workspace workbench', () => {
+  it('keeps only one preview when the collapsed details seat remains mounted', async () => {
+    const workspaceFiles = vi.fn(async (request: { kind: string }) => ({ result: { ok: true, value: request.kind === 'list'
+      ? { kind: 'directory', path: '', entries: [{ path: 'index.html', name: 'index.html', directory: false }], truncated: false }
+      : { kind: 'file', path: 'index.html', mime: 'text/html', size: 16, dataBase64: btoa('<h1>Preview</h1>') } } }))
+    const runtime = await bench({ details: true, workspaceFiles })
+    try {
+      const view = runtime.renderRoot()
+      fireEvent.click(view.getByRole('tab', { name: '文件工作台' }))
+      fireEvent.click(await view.findByTitle('index.html'))
+      await waitFor(() => { expect(view.container.querySelectorAll('iframe')).toHaveLength(1) })
+      fireEvent.click(view.getByRole('button', { name: '展开预览' }))
+      await waitFor(() => { expect(document.querySelectorAll('iframe')).toHaveLength(1) })
+    } finally { await runtime.dispose() }
+  })
+
   it('opens the registered view and reads previews through the selected session transport', async () => {
     const workspaceFiles = vi.fn(async (request: { kind: string }) => ({ result: { ok: true, value: request.kind === 'list'
       ? { kind: 'directory', path: '', entries: [{ path: 'index.html', name: 'index.html', directory: false }], truncated: false }

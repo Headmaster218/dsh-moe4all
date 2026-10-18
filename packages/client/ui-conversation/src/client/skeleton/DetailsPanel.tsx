@@ -66,6 +66,7 @@ function rawResultText(block: ToolCallBlock): string {
 export function DetailsPanel({ useSession, useSessions, sessionId, useStore, actions, renderSlot, closeDetails, t }: DetailsPanelProps) {
   const selection = useStore(s => s.selection)
   const mode = useStore(s => s.detailsMode ?? 'tool')
+  const fullWorkbench = useStore(s => s.view === 'workbench')
   // Session workspace root: an omitted or relative terminal cwd resolves
   // against it, which the pure presenter cannot see.
   const sessionCwd = useSessions(list => list.byId[sessionId]?.cwd)
@@ -95,7 +96,7 @@ export function DetailsPanel({ useSession, useSessions, sessionId, useStore, act
         </button>
       </div>
       <div className={css.body}>
-        {mode !== 'tool' ? renderSlot('conversation.details.workspace', {}) : selection === null || callId === undefined
+        {mode !== 'tool' ? (fullWorkbench ? null : renderSlot('conversation.details.workspace', {})) : selection === null || callId === undefined
           ? <div className={css.empty}>{t('details.empty')}</div>
           : material === null
             ? <div className={css.empty}>{t('details.notInWindow')}</div>
