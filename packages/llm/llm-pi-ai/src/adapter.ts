@@ -60,6 +60,7 @@ import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import type { ResolvedPiAiProviderProfile } from './config.ts'
 import { toPiContext } from './context.ts'
 import { toStreamChunks } from './stream.ts'
+import { closeStreamIterator, settleStreamOperation } from './stream-lifetime.ts'
 
 /** One resolution's frozen view: the profiles and the collection built from them. */
 interface PiAiSnapshot {
@@ -364,6 +365,10 @@ export class PiAiAdapter extends LlmAdapter {
           maxPixels: profile.requestImagePixelBudget,
           maxBytes: profile.requestImageMaxBytes,
         })
+      if (upstream.aborted) {
+        yield { type: 'finish', reason: { kind: 'aborted' } }
+        return
+      }
       const events = snapshot.models.streamSimple(model, context, {
         ...profileOptions(profile, reasoning, apiKey),
         ...options.temperature === undefined ? {} : { temperature: options.temperature },
@@ -378,7 +383,7 @@ export class PiAiAdapter extends LlmAdapter {
       let exhausted = false
       try {
         while (true) {
-          const result = await watchdog.next(iterator)
+          const result = await settleStreamOperation(watchdog.next(iterator), watchdog.signal)
           const timeout = timeoutOf(watchdog.signal, 'LLM_STREAM_IDLE_TIMEOUT')
           if (timeout !== undefined) throw timeout
           if (result.done) {
@@ -391,7 +396,7 @@ export class PiAiAdapter extends LlmAdapter {
         if (!exhausted) {
           consumer.abort('pi-ai stream consumer stopped')
           try {
-            await iterator.return(undefined)
+            await closeStreamIterator(iterator, watchdog.signal)
           } catch (_abortedSdkTeardown) {
             // The stable signal already owns SDK termination; return-time abort cannot add an outcome.
           }
