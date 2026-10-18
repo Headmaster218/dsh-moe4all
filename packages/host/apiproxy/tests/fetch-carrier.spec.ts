@@ -138,6 +138,9 @@ function fakeApi(overrides: Partial<{ muxFrames: MuxFrame[]; hostFrames: HostFra
       },
     },
     host: {
+      async workspaceFiles(request) {
+        return { rpcId: request.rpcId, result: { ok: true, value: { kind: 'directory' as const, path: '', entries: [], truncated: false } } }
+      },
       async describe(request) {
         return {
           rpcId: request.rpcId,

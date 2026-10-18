@@ -15,6 +15,7 @@ describe('workspace files', () => {
     const first = await workspaceFiles(root, upload, limits, signal())
     const second = await workspaceFiles(root, upload, limits, signal())
     expect(first.kind).toBe('imported'); expect(second.kind).toBe('imported')
+    if (first.kind !== 'imported' || second.kind !== 'imported') throw new Error('Expected imported file paths')
     expect(first.path).not.toBe(second.path)
     expect(await readFile(first.path, 'utf8')).toBe('hello')
     const preview = await workspaceFiles(root, { sessionId: 's1', kind: 'read', path: first.path } as WorkspaceFileRequest, limits, signal())
