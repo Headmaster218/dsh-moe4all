@@ -70,73 +70,80 @@ function text(result: { content: { type: string; text?: string }[] }): string {
   return result.content.filter(block => block.type === 'text').map(block => block.text).join('')
 }
 
+async function setupLoader(timeoutMs = 20_000, maxOutputBytes = 4_000) {
+  root = await mkdtemp(join(tmpdir(), 'dsh-persistent-pwsh-loader-'))
+  const configPath = join(root, 'cordis.yml')
+  await writeFile(configPath, [
+    "- name: '@deepseek-ai/dsh-agent'",
+    "- name: '@deepseek-ai/dsh-system-prompt'",
+    "- name: '@deepseek-ai/dsh-tools'",
+    "- name: '@deepseek-ai/dsh-terminal'",
+    "- name: '@deepseek-ai/dsh-test-sandbox'",
+    "- name: '@deepseek-ai/dsh-sandbox-policy'",
+    '  config:',
+    '    mode: danger-full-access',
+    `    workspaceRoot: ${JSON.stringify(root)}`,
+    "- name: '@deepseek-ai/dsh-subprocess-local'",
+    "- name: '@deepseek-ai/dsh-terminal-bash'",
+    '  config:',
+    '    shellDialect: pwsh',
+    '    pollIntervalMs: 10',
+    '    exactProbeAfterMs: 20',
+    '    idleSilenceMs: 300',
+    '    handoffGraceMs: 300',
+    '    scrollbackLines: 20000',
+    '    timeoutMs: 8000',
+    '    disposeGraceMs: 500',
+    "- name: '@deepseek-ai/dsh-tool-pwsh-persistent'",
+    '  config:',
+    `    timeoutMs: ${timeoutMs}`,
+    `    maxOutputBytes: ${maxOutputBytes}`,
+    '',
+  ].join('\n'))
+
+  context = new Context()
+  context.baseUrl = pathToFileURL(root).href + '/'
+  await context.plugin(Loader)
+  context.loader.builtins.include = Include
+  const modules = new Map<string, unknown>([
+    ['@deepseek-ai/dsh-agent', AgentRegistry],
+    ['@deepseek-ai/dsh-system-prompt', SystemPrompt],
+    ['@deepseek-ai/dsh-tools', ToolRegistry],
+    ['@deepseek-ai/dsh-terminal', TerminalSessionService],
+    ['@deepseek-ai/dsh-test-sandbox', PassthroughSandbox],
+    ['@deepseek-ai/dsh-sandbox-policy', SandboxPolicyService],
+    ['@deepseek-ai/dsh-subprocess-local', LocalSubprocessService],
+    ['@deepseek-ai/dsh-terminal-bash', TerminalBash],
+    ['@deepseek-ai/dsh-tool-pwsh-persistent', ToolPwshPersistent],
+  ])
+  context.loader.internal = {
+    version: 'v2',
+    async import(specifier: string) {
+      if (!modules.has(specifier)) throw new Error(`unexpected Loader import: ${specifier}`)
+      return modules.get(specifier)
+    },
+  } as unknown as NonNullable<typeof context.loader.internal>
+  await context.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(configPath).href } })
+  await context.loader.await()
+
+  const owner = agent(context, root)
+  const signal = new AbortController().signal
+  const execute = (id: string, command: string) => context!.tools.execute({
+    signal,
+    callId: CallId(id),
+    name: 'pwsh',
+    arguments: { command },
+    agent: owner,
+  })
+
+  return { execute }
+}
+
 describe.skipIf(!hasPwsh)('persistent pwsh through a real cordis.yml Loader composition', () => {
   it('preserves cwd and environment across calls', async () => {
-    root = await mkdtemp(join(tmpdir(), 'dsh-persistent-pwsh-loader-'))
-    const configPath = join(root, 'cordis.yml')
-    await writeFile(configPath, [
-      "- name: '@deepseek-ai/dsh-agent'",
-      "- name: '@deepseek-ai/dsh-system-prompt'",
-      "- name: '@deepseek-ai/dsh-tools'",
-      "- name: '@deepseek-ai/dsh-terminal'",
-      "- name: '@deepseek-ai/dsh-test-sandbox'",
-      "- name: '@deepseek-ai/dsh-sandbox-policy'",
-      '  config:',
-      '    mode: danger-full-access',
-      `    workspaceRoot: ${JSON.stringify(root)}`,
-      "- name: '@deepseek-ai/dsh-subprocess-local'",
-      "- name: '@deepseek-ai/dsh-terminal-bash'",
-      '  config:',
-      '    shellDialect: pwsh',
-      '    pollIntervalMs: 10',
-      '    exactProbeAfterMs: 20',
-      '    idleSilenceMs: 300',
-      '    handoffGraceMs: 300',
-      '    scrollbackLines: 20000',
-      '    timeoutMs: 8000',
-      '    disposeGraceMs: 500',
-      "- name: '@deepseek-ai/dsh-tool-pwsh-persistent'",
-      '  config:',
-      '    timeoutMs: 20000',
-      '',
-    ].join('\n'))
+    const { execute } = await setupLoader()
 
-    context = new Context()
-    context.baseUrl = pathToFileURL(root).href + '/'
-    await context.plugin(Loader)
-    context.loader.builtins.include = Include
-    const modules = new Map<string, unknown>([
-      ['@deepseek-ai/dsh-agent', AgentRegistry],
-      ['@deepseek-ai/dsh-system-prompt', SystemPrompt],
-      ['@deepseek-ai/dsh-tools', ToolRegistry],
-      ['@deepseek-ai/dsh-terminal', TerminalSessionService],
-      ['@deepseek-ai/dsh-test-sandbox', PassthroughSandbox],
-      ['@deepseek-ai/dsh-sandbox-policy', SandboxPolicyService],
-      ['@deepseek-ai/dsh-subprocess-local', LocalSubprocessService],
-      ['@deepseek-ai/dsh-terminal-bash', TerminalBash],
-      ['@deepseek-ai/dsh-tool-pwsh-persistent', ToolPwshPersistent],
-    ])
-    context.loader.internal = {
-      version: 'v2',
-      async import(specifier: string) {
-        if (!modules.has(specifier)) throw new Error(`unexpected Loader import: ${specifier}`)
-        return modules.get(specifier)
-      },
-    } as unknown as NonNullable<typeof context.loader.internal>
-    await context.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(configPath).href } })
-    await context.loader.await()
-
-    const owner = agent(context, root)
-    const signal = new AbortController().signal
-    const execute = (id: string, command: string) => context!.tools.execute({
-      signal,
-      callId: CallId(id),
-      name: 'pwsh',
-      arguments: { command },
-      agent: owner,
-    })
-
-    expect(context.tools.schemas().map(schema => schema.name)).toEqual(['pwsh'])
+    expect(context!.tools.schemas().map(schema => schema.name)).toEqual(['pwsh'])
     await execute('state', '$env:KEEP = "loader"; New-Item -ItemType Directory -Force -Path nested | Out-Null; Set-Location nested')
     const observed = text(await execute('observe', 'Write-Output "cwd=$PWD keep=$env:KEEP"'))
     expect(observed).toContain(`cwd=${join(root, 'nested')} keep=loader`)
@@ -164,4 +171,17 @@ describe.skipIf(!hasPwsh)('persistent pwsh through a real cordis.yml Loader comp
     expect(exited).toContain('next pwsh call starts from the workspace')
     expect(text(await execute('after-exit', 'Write-Output "$PWD"'))).toBe(root)
   }, 60_000)
+
+  it('reports an actual timeout and starts a fresh shell afterward', async () => {
+    const { execute } = await setupLoader(5_000)
+    expect(text(await execute('warm-up', '$env:BEFORE_TIMEOUT = "set"'))).toBe('')
+    const timedOut = text(await execute('timeout', 'Write-Output "before timeout"; Start-Sleep -Seconds 15'))
+    expect(timedOut.split('\n')[0]).toMatchInlineSnapshot(
+      `"Your command timed out after 5 seconds. Below is partial output:"`,
+    )
+    expect(timedOut).toContain('before timeout')
+    expect(timedOut).toContain('next pwsh call starts from the workspace')
+    expect(timedOut).not.toContain('OOM')
+    expect(text(await execute('fresh-shell', 'Write-Output "fresh=$env:BEFORE_TIMEOUT"'))).toBe('fresh=')
+  }, 30_000)
 })

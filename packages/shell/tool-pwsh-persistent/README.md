@@ -37,6 +37,8 @@ Commands share one shell per Agent, so cwd, `$env:` variables, functions, and ba
 
 Completion status accepts terminal padding spaces before LF or CRLF; a marker without a complete status line does not establish completion.
 
+Timeout diagnostics report the configured limit in seconds, including subsecond limits, without inferring an out-of-memory failure.
+
 #### Token effect
 
 Data-dependent. `maxOutputChars` bounds retained command output; fixed clipping, lost-prefix, status, timeout, and reset diagnostics can extend the result.
