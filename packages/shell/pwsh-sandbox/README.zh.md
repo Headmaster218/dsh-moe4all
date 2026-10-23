@@ -29,6 +29,12 @@
 
 ## 已知限制与后续工作
 
+- **受限 PowerShell 编码**保留语言模式默认值，见 [pwsh-local](../pwsh-local/README.zh.md)。初始化不会放宽 ConstrainedLanguage，也不会引入产生 BOM 的管道编码。
+
 - **Windows 上读不受限**（ACL runner 只限写）；读边界文档在 `@deepseek-ai/dsh-sandbox-windows-acl`。
 - **Windows workspace-write 的临时权限按每个活跃的会话/工作区对私有**；无 agent（智能体）的调用每次都获得一个新的私有目录。环境临时根目录绝不会被授权，runner 会在 spawn 前将 TMP/TEMP 重写为该私有目录。
 - **Windows read-only 不授予任何显式可写根目录，但仍为部分强制执行**，因为受限令牌必须保留 Everyone。DACL 向 Everyone 授予写访问的对象——包括以兼容方式打开的 NUL 设备——仍构成环境权限来源；PowerShell 的 `> $null` 重定向仍可工作，且不会打开 NUL。
+
+## 定向兼容性测试
+
+`tests/readonly-encoding.spec.ts` 在 Windows 上显式开启。设置 `DSH_RUN_SANDBOX_COMPAT=1`，将 `DSH_TEST_PWSH7`、`DSH_TEST_PWSH5`、`DSH_TEST_PYTHON` 指向已有可执行文件，`DSH_READONLY_ENCODING_REPORT` 指向证据文件。用例覆盖两个 read-only shell、命令错误及退出语义、子程序直接输出 UTF-8、管道不新增 BOM，以及写入仍被拒。将 TEMP/TMP 重定向到隔离测试目录；不需要下载或联网。通过不代表受限 PowerShell 自身输出的 Unicode 兼容性已经完善。

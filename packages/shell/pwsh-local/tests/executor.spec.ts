@@ -186,6 +186,7 @@ describe('spawn construction (pure, every platform)', () => {
     expect(argv[5]).toBe(`${ENCODING_PREAMBLE}Write-Output 你好`)
     expect(ENCODING_PREAMBLE).toContain('[Console]::OutputEncoding')
     expect(ENCODING_PREAMBLE).toContain('$OutputEncoding')
+    expect(ENCODING_PREAMBLE).toMatch(/^if \(\$ExecutionContext\.SessionState\.LanguageMode -eq 'FullLanguage'\) \{/)
     expect(subprocess.specs[0]?.env).toMatchObject({ PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' })
     await ctx.fiber.dispose()
   })
@@ -206,6 +207,20 @@ describe('spawn construction (pure, every platform)', () => {
 })
 
 describe.skipIf(!hasPwsh)('PwshLocalExecutor.run', () => {
+  it('keeps FullLanguage console output UTF-8 and native pipeline encoding BOM-free', async () => {
+    const { ctx, bash } = await setup()
+    try {
+      const result = await bash.run(bash.resolve({
+        command: "Write-Output ([char]0x4e2d + [string][char]0x6587); Write-Output $OutputEncoding.CodePage; Write-Output $OutputEncoding.GetPreamble().Length",
+      }))
+      expect(result.exitCode).toBe(0)
+      expect(lf(result.stdout.text)).toBe('\u4e2d\u6587\n65001\n0\n')
+      expect(result.stderr.text).toBe('')
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('resolves with output and the effective timeout', { timeout: 15_000 }, async () => {
     const { bash } = await setup({ timeoutMs: 10_000 })
     const result = await bash.run(bash.resolve({ command: 'Write-Output hi' }))

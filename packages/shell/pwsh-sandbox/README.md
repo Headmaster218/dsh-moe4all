@@ -29,6 +29,12 @@ None directly; the denial surface belongs to the tool layer.
 
 ## Known Limitations and Deferred Work
 
+- **Restricted PowerShell encoding** retains language-mode defaults; see [pwsh-local](../pwsh-local/README.md). Its initializer does not relax ConstrainedLanguage or introduce BOM-emitting pipeline encoding.
+
 - **Reads are unrestricted** on Windows (the ACL runner restricts writes only); the read boundary is documented in `@deepseek-ai/dsh-sandbox-windows-acl`.
 - **Windows workspace-write temp authority is private** per live session/workspace pair; agentless calls receive a fresh private directory per invocation. The ambient temp root is never granted, and the runner rewrites TMP/TEMP to the private directory before spawning.
 - **Windows read-only grants no explicit writable root but remains partial** because the restricted token must retain Everyone. Objects whose DACL grants Everyone write access — including compatible opens of the NUL device — remain ambient authority; PowerShell's `> $null` redirection still works without opening NUL.
+
+## Focused Compatibility Test
+
+`tests/readonly-encoding.spec.ts` is opt-in on Windows. Set `DSH_RUN_SANDBOX_COMPAT=1`, `DSH_TEST_PWSH7`, `DSH_TEST_PWSH5`, `DSH_TEST_PYTHON` to existing executables and `DSH_READONLY_ENCODING_REPORT` to an evidence file. It checks both read-only shells, command error/exit semantics, direct UTF-8 child output, no added pipeline BOM, and denied writes. Redirect TEMP/TMP to an isolated test directory; no downloads or network are needed. Passing does not establish full Unicode compatibility for restricted PowerShell's own output.
