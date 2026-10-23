@@ -92,6 +92,8 @@ None directly; the denial surface belongs to the tool layer.
 
 ## Known Limitations and Deferred Work
 
+- **Tool cache defaults use the existing private temp capability.** In workspace-write the runner supplies absent `UV_CACHE_DIR`, `PIP_CACHE_DIR` and `npm_config_cache` under `<private-temp>/tool-cache/<tool>`. Explicit settings, including alternate case and empty values, are preserved; specifying an outside path grants no access. No cache directories are eagerly created and no extra ACEs are added. The live session/workspace pair can reuse its cache until provider disposal; agentless calls have invocation-local caches. Read-only and direct `AclSandbox` users receive no such defaults. These are disposable execution caches, not a persistent global package store.
+
 - **One write allowlist per workspace** — the write SID is the unit of the allowlist and IS the workspace identity; reusing one sandbox instance across two workspaces widens both grants to both roots (the same SID would then name two roots). Create one instance per workspace root — the seam does exactly this, keyed by the workspace path.
 - **Cleanup is best-effort by design** — `dispose()` attempts every temp revocation and aggregates failures into an `AggregateError`; a cleanup failure can leave the random directory and its temp-SID-only ACE behind. Once the process exits no future token carries that SID, so the residue is inert until OS temp hygiene or manual directory removal reclaims it.
 - **Standing workspace ACEs are invisible residue.** Renaming a workspace derives a new SID; the old ACEs on the old path stay (inert, write-SID-only). A future cleanup command may reap them; nothing re-propagates because of them.

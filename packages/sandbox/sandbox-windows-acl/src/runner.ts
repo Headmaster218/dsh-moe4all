@@ -50,6 +50,7 @@ import { join } from 'node:path'
 import { win32 } from './ffi.ts'
 import { AclSandbox, assertTempRootOutsideWorkspace } from './index.ts'
 import { tempWriteSid, workspaceWriteSid } from './workspace-sid.ts'
+import { toolCacheDefaults } from './tool-cache.ts'
 
 const RUNNER_SIGNATURE = 'windows-acl-run'
 const RUNNER_FAILURE_EXIT = 127
@@ -175,6 +176,11 @@ async function main(): Promise<number> {
       }
       if (api.setEnvironmentVariableW('TEMP', privateTempDir) === 0) {
         fail(`SetEnvironmentVariableW TEMP failed (Win32 ${api.getLastError()})`)
+      }
+      for (const [key, value] of Object.entries(toolCacheDefaults(privateTempDir, process.env))) {
+        if (api.setEnvironmentVariableW(key, value) === 0) {
+          fail(`SetEnvironmentVariableW ${key} failed (Win32 ${api.getLastError()})`)
+        }
       }
     }
 
