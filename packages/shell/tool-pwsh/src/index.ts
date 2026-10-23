@@ -110,8 +110,8 @@ function pwshDescription(backgroundEnabled: boolean, escalationModes: readonly S
     + 'variables with `$env:NAME`. Non-zero exits are reported as `[exit code: N]`. '
     + 'Current harness environment facts are exposed through managed `$env:DSH_*` variables; inspect them when needed. '
     + 'Commands may run under a file sandbox; a blocked file operation is reported as `[sandbox: file access denied under <mode> mode]` — a policy denial, not a bug in the command; do not retry another way. '
-    + 'Long output is truncated to its tail; the full output is saved to a file whose path is reported when available. '
-    + 'On Windows a force-killed command settles as `[exit code: 1]` without a signal marker — treat it as an interruption, not a command failure. '
+    + 'Long output is truncated to its tail; a saved-output path is reported when available, but the saved file may also be capped. Do not rerun side-effecting commands merely to recover omitted output. '
+    + 'Exit code 1 alone does not identify a failure or interruption cause; inspect the output and explicit timeout/cancellation facts. '
     + background
   if (escalationModes.length === 0) return base
   // The language-mode and named-pipe contracts below are Windows-restricted-token
@@ -125,12 +125,8 @@ function pwshDescription(backgroundEnabled: boolean, escalationModes: readonly S
     + 'workspace-write stays in FullLanguage unless host policy says otherwise. In read-only, prefer cmdlets and core types (`[string]`, `[datetime]`, `[regex]`, `[guid]`); '
     + '.NET static calls (`[System.IO.*]::`, `[math]::`), `Add-Type`, COM objects, and reflection fail '
     + 'with "only core types" errors. `-f` formatting, property access, and core cmdlets work. '
-    + 'In both confined modes, programs cannot open named pipes, so a command that captures another '
-    + 'program\'s output through piped stdio (Node.js `child_process.spawn`/`exec` with the default '
-    + '`stdio: \'pipe\'`) fails with EPERM, while `stdio: \'inherit\'` and `stdio: \'ignore\'` spawns '
-    + 'work and PowerShell\'s own pipelines are unaffected. That EPERM is the documented boundary: '
-    + 'do not retry the command another way — escalate the exact command once or restructure it to '
-    + 'avoid capturing output. '
+    + 'Some programs that create named pipes, including Node.js child-process output capture, can fail with EPERM under confinement. '
+    + 'EPERM alone does not prove a policy denial or justify wider permissions. Investigate ordinary program errors within the existing permissions; never bypass an explicit policy denial. '
     + 'Attempting a command the sandbox may deny is safe and expected: run it and read the '
     + 'marker rather than assuming the denial. When a command is denied and a wider mode would let it '
     + 'succeed, escalate immediately in the same turn — the one sanctioned exception to a denial: retry '
@@ -246,7 +242,8 @@ export function apply(ctx: Context, config: Config = {}): void {
     name: 'tool:pwsh',
     order: 105,
     text: 'Non-zero exits are reported as `[exit code: N]` markers; investigate failures before moving on. '
-      + 'On Windows a killed process settles as `[exit code: 1]` without a signal marker; treat a bare exit 1 after an interruption as a termination, not a command failure.',
+      + 'An exit code alone does not establish the cause, and stderr may contain normal program output. '
+      + 'Each call starts a new shell: environment activation does not persist. Reuse the selected project interpreter explicitly, pair it with `-m pip`, and verify actual imports before treating a dependency as usable.',
   })
 
   ctx.tools.register(defineTool({
@@ -343,6 +340,19 @@ export function apply(ctx: Context, config: Config = {}): void {
           ? `started background job ${value.jobId}`
           : renderPwshResult(value as RenderablePwshResult, escalationModes),
       }],
+      presentationMeta: (_args, value) => {
+        if (value.kind === 'background') return { kind: value.kind, jobId: value.jobId }
+        const { kind, exitCode, signal, timedOut, aborted, timeoutMs, sandbox, stdout, stderr } = value as PwshForegroundResult
+        const capture = (stream: PwshForegroundResult['stdout']) => ({
+          truncated: stream.truncated,
+          ...stream.spillPath === undefined ? {} : { spillPath: stream.spillPath },
+        })
+        return {
+          kind, exitCode, signal, timedOut, aborted, timeoutMs,
+          stdout: capture(stdout), stderr: capture(stderr),
+          ...sandbox === undefined ? {} : { sandbox },
+        }
+      },
     },
     /* jscpd:ignore-start -- the execute path mirrors dsh-tool-bash's by design (see the pwsh-tool-and-executor Agent Note). */
     async execute(args: PwshToolArgs, exec) {

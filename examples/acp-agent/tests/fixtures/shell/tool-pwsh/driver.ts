@@ -66,6 +66,7 @@ try {
     promptHasMarkerSection: prompt?.text.includes('Non-zero exits are reported as `[exit code: N]` markers') === true,
     // Normalize PowerShell's platform line endings (CRLF on Windows, LF elsewhere).
     foregroundText: foregroundText.replace(/\r\n/g, '\n'),
+    foregroundMeta: foreground.meta,
     encodingText: encoding.content.filter(block => block.type === 'text').map(block => block.text).join('').replace(/\r\n/g, '\n'),
     backgroundText: backgroundText.replace(/\r\n/g, '\n'),
   }))

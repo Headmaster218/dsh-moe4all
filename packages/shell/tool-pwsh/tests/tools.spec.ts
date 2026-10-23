@@ -315,7 +315,9 @@ describe('registration', () => {
     expect(schema?.parameters.required).toEqual(['command', 'description'])
     const prompt = renderPrompt(await ctx.systemPrompt.assemble())
     expect(prompt).toContain('Non-zero exits are reported as `[exit code: N]` markers')
-    expect(prompt).toContain('without a signal marker')
+    expect(prompt).toContain('stderr may contain normal program output')
+    expect(prompt).toContain('environment activation does not persist')
+    expect(schema?.description).not.toContain('treat it as an interruption')
   })
 
   it('stays pending until ctx.shell exists (inject)', async () => {
@@ -350,6 +352,28 @@ describe('argument validation', () => {
 })
 
 describe('execution through the bash seam', () => {
+  it('keeps exit, timeout, capture and sandbox facts in replayable metadata without duplicating output', async () => {
+    const { ctx, bash } = await setup()
+    bash.handler = () => runResult('large output', {
+      exitCode: 7, timedOut: true, timeoutMs: 50,
+      stdout: { text: 'large output', truncated: true, spillPath: '/spill/output.log' },
+      sandbox: { mode: 'workspace-write', denied: false, enforcement: 'partial' },
+    })
+    try {
+      const result = await call(ctx, 'pwsh', { command: 'test', description: 'inspect status' })
+      expect(result.isError).toBe(false)
+      expect(result.meta).toEqual({
+        kind: 'foreground', exitCode: 7, signal: null, timedOut: true, aborted: false, timeoutMs: 50,
+        stdout: { truncated: true, spillPath: '/spill/output.log' }, stderr: { truncated: false },
+        sandbox: { mode: 'workspace-write', denied: false, enforcement: 'partial' },
+      })
+      expect(text(result)).toContain('[timed out after 50ms]')
+      expect(text(result)).toContain('[exit code: 7]')
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('forwards command, session cwd, timeout, and managed DSH_* environment', async () => {
     const dshHome = mkdtempSync(join(tmpdir(), 'dsh-tool-pwsh-home-'))
     const { ctx, bash } = await setup({}, dshHome)
@@ -471,7 +495,7 @@ describe('execution through the bash seam', () => {
       stderr: { text: '', truncated: false },
     })
     const result = await call(ctx, 'pwsh', { command: 'noisy', description: 'noise' })
-    expect(text(result)).toBe('tail\n[output truncated; full output: /spill/out.log]')
+    expect(text(result)).toBe('tail\n[output truncated; saved output: /spill/out.log]')
 
     bash.handler = () => runResult('', { timedOut: true, exitCode: null, signal: 'SIGTERM', timeoutMs: 500 })
     const timedOut = await call(ctx, 'pwsh', { command: 'slow', description: 'slow' })
@@ -486,7 +510,7 @@ describe('execution through the bash seam', () => {
       stderr: { text: '', truncated: false },
     })
     const result = await call(ctx, 'pwsh', { command: 'noisy', description: 'noise' })
-    expect(text(result)).toBe('tail\n[output truncated; full output: (unavailable)]')
+    expect(text(result)).toBe('tail\n[output truncated; no saved output available]')
   })
 
   it('translates an aborted run into the TOOL_ABORTED HarnessError', async () => {
@@ -560,8 +584,8 @@ describe('sandbox escalation through ctx.approval', () => {
     expect(schema.description).toContain('approval prompt')
     expect(schema.description).toContain('ConstrainedLanguage')
     expect(schema.description).toContain('workspace-write stays in FullLanguage')
-    expect(schema.description).toContain('In both confined modes, programs cannot open named pipes')
-    expect(schema.description).toContain('fails with EPERM')
+    expect(schema.description).toContain('EPERM alone does not prove a policy denial')
+    expect(schema.description).toContain('can fail with EPERM')
 
     for (const args of [
       { command: 'Write-Output ok', description: 'd', sandbox_permissions: 'workspace-write' },
@@ -979,31 +1003,31 @@ describe('renderPwshProcessRead', () => {
 
   it('appends the loss notice with the available spill paths', () => {
     expect(renderPwshProcessRead({ ...base, lossy: true, stdoutSpillPath: 'C:\\spill\\out.log' }))
-      .toBe('out\n[some output was dropped from memory; full output: C:\\spill\\out.log]')
+      .toBe('out\n[some output was dropped from memory; saved output: C:\\spill\\out.log]')
     expect(renderPwshProcessRead({
       ...base,
       lossy: true,
       stdoutSpillPath: 'C:\\spill\\out.log',
       stderrSpillPath: 'C:\\spill\\err.log',
     }))
-      .toBe('out\n[some output was dropped from memory; full output: C:\\spill\\out.log, C:\\spill\\err.log]')
+      .toBe('out\n[some output was dropped from memory; saved output: C:\\spill\\out.log, C:\\spill\\err.log]')
   })
 
   it('reports (unavailable) when a lossy read has no safe spill path', () => {
     expect(renderPwshProcessRead({ ...base, lossy: true }))
-      .toBe('out\n[some output was dropped from memory; full output: (unavailable)]')
+      .toBe('out\n[some output was dropped from memory; no saved output available]')
   })
 
   it('an empty lossy delta is the notice alone', () => {
     expect(renderPwshProcessRead({ delta: '', lossy: true, stderrSpillPath: 'C:\\spill\\err.log' }))
-      .toBe('[some output was dropped from memory; full output: C:\\spill\\err.log]')
+      .toBe('[some output was dropped from memory; saved output: C:\\spill\\err.log]')
   })
 
   it('inserts the separating newline only when the delta lacks one', () => {
     expect(renderPwshProcessRead({ delta: 'tail', lossy: true }))
-      .toBe('tail\n[some output was dropped from memory; full output: (unavailable)]')
+      .toBe('tail\n[some output was dropped from memory; no saved output available]')
     expect(renderPwshProcessRead({ delta: 'tail\n', lossy: true }))
-      .toBe('tail\n[some output was dropped from memory; full output: (unavailable)]')
+      .toBe('tail\n[some output was dropped from memory; no saved output available]')
   })
 
   it('appends the runner-failed notice (denial outranked)', () => {

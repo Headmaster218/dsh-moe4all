@@ -19,7 +19,8 @@ import { escalationHintMarker, sandboxDenialMarker } from '@deepseek-ai/dsh-sand
 /** Append the truncation notice (with the full-output spill path) to a stream's text. */
 function streamText(output: CollectedOutput): string {
   if (!output.truncated) return output.text
-  return `${output.text}\n[output truncated; full output: ${output.spillPath ?? '(unavailable)'}]`
+  const notice = output.spillPath === undefined ? 'no saved output available' : `saved output: ${output.spillPath}`
+  return `${output.text}\n[output truncated; ${notice}]`
 }
 
 /** The renderable foreground result shape (the schema-derived value, no `kind`). */
@@ -97,7 +98,7 @@ export function renderPwshProcessRead(
   const notices: string[] = []
   if (read.lossy) {
     const paths = [read.stdoutSpillPath, read.stderrSpillPath].filter((path): path is string => path !== undefined)
-    notices.push(`[some output was dropped from memory; full output: ${paths.length > 0 ? paths.join(', ') : '(unavailable)'}]`)
+    notices.push(`[some output was dropped from memory; ${paths.length > 0 ? `saved output: ${paths.join(', ')}` : 'no saved output available'}]`)
   }
   if (sandbox?.runnerFailed) {
     notices.push(`[sandbox: the sandbox runner itself failed under ${sandbox.mode} mode — the command did not run; this is a sandbox problem, not a command failure]`)

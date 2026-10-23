@@ -8,7 +8,7 @@ Requires a loaded executor implementation and the `shell-env` plugin; the tool s
 
 The package root exposes only the Cordis plugin contract (`name`, `inject`, `Config`, `apply`); result rendering (`src/render.ts`) and background-job adaptation (`src/background.ts`) mirror the bash tool's structure and stay reachable through the package's `./src/*` export.
 
-The plugin also contributes the `tool:pwsh` prompt section (order 105): non-zero exits are reported as `[exit code: N]` markers, and Windows interruption settles as exit 1 without a signal marker.
+The plugin also contributes the `tool:pwsh` prompt section (order 105): exit status is distinct from its cause, stderr can contain normal output, and environment activation does not persist between calls.
 
 ## Tools
 
@@ -30,9 +30,9 @@ The plugin also contributes the `tool:pwsh` prompt section (order 105): non-zero
 
 Every foreground and background model pwsh call receives a freshly collected trusted `DSH_*` environment through the shared [`dsh-shell-env`](../shell-env/) registry: `DSH_HOME` (the absolute Harness home), `DSH_SHELL=1`, the agent's `DSH_SESSION_ID`, and `DSH_SESSION_JSONL` when the active persistence backend locates one. Plugins contributing `DSH_*` facts to `ctx.shellEnv` apply to pwsh calls exactly as they do to bash calls. The snapshot passes through the dedicated `ShellExecRequest.dshEnv` channel; `process.env` is never modified. The description teaches the generic `$env:DSH_*` convention rather than naming persistence-specific variables.
 
-Result text contains stdout, an optional `[stderr]` section, then applicable truncation, sandbox-denial (with the same-turn escalation hint when the composition advertises escalation), timeout, signal, and exit markers. A clean exit (0, no signal) produces no marker; an empty body renders as `(no output)`. Truncation links a safe complete spill file or reports it unavailable. Timeout is reported independently of final exit status; nonzero exit remains a model-interpreted result rather than `isError`. Windows reports forced termination as exit 1 without a signal, so `[killed by signal: …]` is POSIX-only there. Only infrastructure failures — spawn errors and aborts (`tool call aborted`) — produce `isError`.
+Result text contains stdout, an optional `[stderr]` section, then applicable truncation, sandbox-denial (with the same-turn escalation hint when the composition advertises escalation), timeout, signal, and exit markers. A clean exit (0, no signal) produces no marker; an empty body renders as `(no output)`. Truncation links saved output or reports it unavailable. Timeout is reported independently of final exit status; nonzero exit remains a model-interpreted result rather than `isError`. Windows reports forced termination as exit 1 without a signal, so `[killed by signal: …]` is POSIX-only there. Only infrastructure failures — spawn errors and aborts (`tool call aborted`) — produce `isError`.
 
-The canonical success is `{ kind: 'foreground', ...ShellRunResult }` for a completed foreground process (with the executor's `sandbox` facts — `mode`/`denied`, optional `enforcement`/`runnerFailed` — projected when present) or `{ kind: 'background', jobId }` for a published task. The renderer preserves exactly `started background job <id>` for background acks; programmatic consumers use the typed fields without parsing the rendered text.
+The canonical success is `{ kind: 'foreground', ...ShellRunResult }` for a completed foreground process (with the executor's `sandbox` facts — `mode`/`denied`, optional `enforcement`/`runnerFailed` — projected when present) or `{ kind: 'background', jobId }` for a published task. Top-level results also persist these status facts in `meta`, retaining capture truncation/spill paths without copying stdout/stderr text. The renderer preserves exactly `started background job <id>` for background acks; programmatic consumers use the typed fields without parsing the rendered text. Saved output can itself be capped; do not rerun side-effecting commands just to recover omitted output. EPERM alone is not proof of a policy denial and does not justify wider permissions.
 
 When `run_in_background` is true, this plugin preflights `ctx.jobs.start()` before spawning, registers the calling agent as owner, and adapts the returned `ShellProcess` handle into generic cancel/done/incremental-output hooks. The job runtime owns ids, cross-session isolation, completion notices, waiting, and disposal cleanup; this plugin only maps pwsh exit facts into job output and outcome detail. `enableRunInBackground: false` removes the parameter and rejects a forced background call at execution time.
 
@@ -51,7 +51,7 @@ Every request in this plugin's registration scope contains the pwsh guidance bel
 ##### Pwsh guidance
 
 ```markdown
-Non-zero exits are reported as `[exit code: N]` markers; investigate failures before moving on. On Windows a killed process settles as `[exit code: 1]` without a signal marker; treat a bare exit 1 after an interruption as a termination, not a command failure.
+Non-zero exits are reported as `[exit code: N]` markers; investigate failures before moving on. An exit code alone does not establish the cause, and stderr may contain normal program output. Each call starts a new shell: environment activation does not persist. Reuse the selected project interpreter explicitly, pair it with `-m pip`, and verify actual imports before treating a dependency as usable.
 ```
 
 #### Token effect
@@ -80,7 +80,7 @@ Prefix-stable while visibility and the tool definition are unchanged. A restrict
 
 #### What the model sees
 
-The renderer emits the data-dependent stdout tail, then optional `[stderr]` and the stderr tail. Conditional lines are exactly `[output truncated; full output: <path>]`, `[sandbox: file access denied under <mode> mode]` plus the escalation hint `[sandbox: escalation available — …]` (only when the composition advertises escalation), `[timed out after <timeoutMs>ms]`, `[killed by signal: <signal>]`, and `[exit code: <exitCode>]` (nonzero exits only); an empty body renders as `(no output)`.
+The renderer emits the data-dependent stdout tail, then optional `[stderr]` and the stderr tail. Conditional lines are exactly `[output truncated; saved output: <path>]` (or `[output truncated; no saved output available]`), `[sandbox: file access denied under <mode> mode]` plus the escalation hint `[sandbox: escalation available — …]` (only when the composition advertises escalation), `[timed out after <timeoutMs>ms]`, `[killed by signal: <signal>]`, and `[exit code: <exitCode>]` (nonzero exits only); an empty body renders as `(no output)`.
 
 #### Token effect
 
@@ -120,7 +120,7 @@ Append-only; newly visible content follows the reusable request prefix and does 
 
 ## Known Limitations and Deferred Work
 
-- **Language mode and named-pipe capture under the Windows sandbox** — under the [Windows ACL sandbox](../../sandbox/sandbox-windows-acl/README.md), read-only pwsh starts in ConstrainedLanguage because its temp write denial makes PowerShell's AppLocker probe fail closed: `Add-Type`, non-core .NET statics (`[System.IO.*]::`, `[math]::`), COM objects, and reflection fail with "only core types" errors, and the mode cannot be lifted from inside. Workspace-write's private temp lets the probe complete, so it stays in FullLanguage unless host policy says otherwise. Both confined modes deny named-pipe opens, so a piped-stdio spawn inside a confined command fails with EPERM. The tool description teaches both contracts to the model; the backend README owns the full limitations.
+- **Language mode and named-pipe capture under the Windows sandbox** — under the [Windows ACL sandbox](../../sandbox/sandbox-windows-acl/README.md), read-only pwsh starts in ConstrainedLanguage because its temp write denial makes PowerShell's AppLocker probe fail closed: `Add-Type`, non-core .NET statics (`[System.IO.*]::`, `[math]::`), COM objects, and reflection fail with "only core types" errors, and the mode cannot be lifted from inside. Workspace-write's private temp lets the probe complete, so it stays in FullLanguage unless host policy says otherwise. Some child-process capture implementations can fail with EPERM; this is not a universal prohibition on subprocess output capture. Actual backend enforcement and compatibility require separate probes.
 - **No persistent shell** — every call starts a fresh `pwsh -Command`; the persistent-shell counterpart is [`@deepseek-ai/dsh-tool-pwsh-persistent`](../tool-pwsh-persistent/README.md), which keeps one owner-scoped pwsh alive across calls on Windows (ConPTY) and POSIX hosts with pwsh.
 - **PowerShell-dialect contract** — the model must write PowerShell (native paths, `$env:` variables), not bash; there is no dialect translation.
 - **Session-cwd identity is not canonicalized** — the workdir base is the session header cwd as-is, unlike the bash tool's sandbox-root-canonicalized identity. Under a confining executor the policy's workspace root IS canonicalized (by the shared policy service), so the workdir and the confinement root can diverge when the raw session cwd differs from its canonical form — a parity gap deferred to the shared shell-tool base extraction.
