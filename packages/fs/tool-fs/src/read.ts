@@ -1,6 +1,6 @@
 /**
- * Model-facing UTF-8 read. It performs one provider stat for type, routing, and observed version,
- * streams large or size-unknown files, renders a bounded window, then emits the observation.
+ * Model-facing UTF-8 read. It stats for type, routing, and observed version, streams large or
+ * size-unknown files, and rechecks version-bound continuations before emitting the observation.
  * @module @deepseek-ai/dsh-tool-fs/src/read
  */
 
@@ -11,6 +11,7 @@ import type {} from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { buildWindow, formatReadOutput, langFromPath, readMetaFromMeta } from './read-render.ts'
 import { resolveRegularReadTarget } from './read-target.ts'
+import { FsError } from '@deepseek-ai/dsh-fs'
 
 /** Default and maximum number of lines returned by one `read` call (the `readLimit` config). */
 export const READ_LIMIT = 2000
@@ -38,6 +39,32 @@ interface ReadInput {
   filePath: string
   offset: number
   limit: number
+  cursor?: ReadCursor
+}
+
+interface ReadCursor {
+  targetKey: string
+  fileVersion: string
+  offset: number
+  characterOffset: number
+}
+
+function parseCursor(token: string): ReadCursor {
+  let value: unknown
+  try {
+    if (token.length > 8192 || !/^[A-Za-z0-9_-]+$/u.test(token)) throw new Error('invalid token')
+    value = JSON.parse(Buffer.from(token, 'base64url').toString('utf8'))
+  } catch {
+    throw new Error('invalid read continuation; copy the token from the previous read result')
+  }
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('invalid read continuation')
+  const { targetKey, fileVersion, offset, characterOffset } = value as Record<string, unknown>
+  if (typeof targetKey !== 'string' || targetKey === '' || typeof fileVersion !== 'string' || fileVersion === ''
+    || typeof offset !== 'number' || !Number.isSafeInteger(offset) || offset < 1
+    || typeof characterOffset !== 'number' || !Number.isSafeInteger(characterOffset) || characterOffset < 0) {
+    throw new Error('invalid read continuation')
+  }
+  return { targetKey, fileVersion, offset, characterOffset }
 }
 
 function parsePositiveInteger(value: number, name: string): number {
@@ -53,12 +80,15 @@ function parsePositiveInteger(value: number, name: string): number {
  * @param maxLimit - the configured line cap: both the default `limit` and the largest one accepted.
  * @returns the validated input with `offset` defaulted to 1 and `limit` to `maxLimit`.
  */
-export function parseReadArgs(args: { file_path: string; offset?: number; limit?: number }, maxLimit: number): ReadInput {
+export function parseReadArgs(args: { file_path: string; offset?: number; limit?: number; continuation?: string }, maxLimit: number): ReadInput {
   if (args.file_path.trim().length === 0) throw new Error('file_path must be a non-empty string')
   const offset = args.offset === undefined ? 1 : parsePositiveInteger(args.offset, 'offset')
   const limit = args.limit === undefined ? maxLimit : parsePositiveInteger(args.limit, 'limit')
   if (limit > maxLimit) throw new Error(`limit must be less than or equal to ${maxLimit}`)
-  return { filePath: args.file_path, offset, limit }
+  if (args.continuation === undefined) return { filePath: args.file_path, offset, limit }
+  if (args.offset !== undefined) throw new Error('omit offset when using a read continuation')
+  const cursor = parseCursor(args.continuation)
+  return { filePath: args.file_path, offset: cursor.offset, limit, cursor }
 }
 
 /**
@@ -80,6 +110,7 @@ export function applyReadTool(ctx: Context, caps: ReadToolCaps): void {
       file_path: { type: 'string', required: true, description: 'Path to read, resolved by the filesystem backend.' },
       offset: { type: 'number', description: '1-based first line to return. Defaults to 1.' },
       limit: { type: 'number', description: `Maximum number of lines to return. Defaults to ${caps.limit}.` },
+      continuation: { type: 'string', description: 'Opaque token from an incomplete read. Copy exactly, keep file_path unchanged, and omit offset.' },
     },
     output: {
       schema: {
@@ -101,12 +132,15 @@ export function applyReadTool(ctx: Context, caps: ReadToolCaps): void {
             },
           },
           totalLines: { type: 'integer', required: true },
+          truncatedByBytes: { type: 'boolean' },
+          continuation: { type: 'string' },
+          characterOffset: { type: 'integer' },
         },
       },
       render: (args, value) => {
         const input = parseReadArgs(args, caps.limit)
         const endLine = value.lines.at(-1)?.number ?? Math.max(0, value.offset - 1)
-        const truncatedByBytes = value.lines.length < input.limit && endLine < value.totalLines
+        const truncatedByBytes = value.truncatedByBytes === true || (value.lines.length < input.limit && endLine < value.totalLines && value.continuation === undefined)
         return [{
           type: 'text',
           text: formatReadOutput(value.path, {
@@ -114,6 +148,8 @@ export function applyReadTool(ctx: Context, caps: ReadToolCaps): void {
             lines: value.lines,
             totalLines: value.totalLines,
             ...truncatedByBytes ? { truncatedByBytes: true } : {},
+            ...value.continuation === undefined ? {} : { continuation: value.continuation },
+            ...value.characterOffset === undefined ? {} : { characterOffset: value.characterOffset },
           }),
         }]
       },
@@ -127,6 +163,8 @@ export function applyReadTool(ctx: Context, caps: ReadToolCaps): void {
           offset: value.offset,
           lines: value.lines.map(({ number, text }) => ({ number, text })),
           totalLines: value.totalLines,
+          ...value.continuation === undefined ? {} : { continuation: value.continuation },
+          ...value.characterOffset === undefined ? {} : { characterOffset: value.characterOffset },
           ...lang === undefined ? {} : { lang },
         }
       },
@@ -138,6 +176,9 @@ export function applyReadTool(ctx: Context, caps: ReadToolCaps): void {
       // One stat: absence observation OR type check + size routing + present version.
       // A concurrent write can only make a later guarded mutation fail stale and require reread.
       const { target, info } = await resolveRegularReadTarget(ctx, exec, input.filePath)
+      if (input.cursor !== undefined && (input.cursor.targetKey !== target.targetKey || input.cursor.fileVersion !== info.version)) {
+        throw new FsError('read continuation refers to another file or an older version; read the file again', 'FS_STALE_VERSION')
+      }
 
       // Stream when the file is large OR size is unknown, so a size-less backend
       // never buffers an arbitrarily large file.
@@ -146,15 +187,28 @@ export function applyReadTool(ctx: Context, caps: ReadToolCaps): void {
         : [await ctx.fs.readText(target, exec.signal)]
       const window = await buildWindow(
         chunks,
-        { offset: input.offset, limit: input.limit, maxLineLength: caps.maxLineLength, maxBytes: caps.maxBytes },
+        { offset: input.offset, limit: input.limit, maxLineLength: caps.maxLineLength, maxBytes: caps.maxBytes,
+          ...input.cursor === undefined ? {} : { characterOffset: input.cursor.characterOffset } },
         target.displayPath,
       )
+
+      if (input.cursor !== undefined || window.next !== undefined) {
+        const current = await ctx.fs.stat(target, exec.signal)
+        if (current?.version !== info.version) throw new FsError('file changed while reading; read the file again', 'FS_STALE_VERSION')
+      }
+      const continuation = window.next === undefined ? undefined : Buffer.from(JSON.stringify({
+        targetKey: target.targetKey, fileVersion: info.version, ...window.next,
+      } satisfies ReadCursor)).toString('base64url')
+      if (continuation !== undefined && continuation.length > 8192) throw new FsError('file identity is too large for a read continuation', 'FS_TOO_LARGE')
 
       const outcome = {
         path: target.displayPath,
         offset: input.offset,
         lines: window.lines,
         totalLines: window.totalLines,
+        ...window.truncatedByBytes ? { truncatedByBytes: true } : {},
+        ...continuation === undefined ? {} : { continuation },
+        ...input.cursor === undefined || input.cursor.characterOffset === 0 ? {} : { characterOffset: input.cursor.characterOffset },
       }
       // Record the present observation (a no-op when no policy plugin listens). The
       // read already succeeded; an fs/observed listener is contractually a

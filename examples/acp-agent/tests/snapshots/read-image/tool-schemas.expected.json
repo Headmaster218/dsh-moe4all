@@ -237,6 +237,10 @@
           "limit": {
             "type": "number",
             "description": "Maximum number of lines to return. Defaults to 2000."
+          },
+          "continuation": {
+            "type": "string",
+            "description": "Opaque token from an incomplete read. Copy exactly, keep file_path unchanged, and omit offset."
           }
         },
         "required": [

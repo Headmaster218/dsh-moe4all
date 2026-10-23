@@ -23,6 +23,8 @@ export interface ReadWindow {
   maxLineLength: number
   /** Maximum bytes of selected output; overflow stops the scan and marks `truncatedByBytes`. */
   maxBytes: number
+  /** UTF-16 position within the first selected line, supplied by a continuation token. */
+  characterOffset?: number
 }
 
 /** One line returned from a text file. */
@@ -41,6 +43,8 @@ export interface WindowResult {
   totalLines: number
   /** Whether selected output hit the byte cap. */
   truncatedByBytes: boolean
+  /** First unread position after a clipped line or byte-capped window. */
+  next?: { offset: number; characterOffset: number }
 }
 
 /** Outcome of a bounded text read — what {@link formatReadOutput} renders. */
@@ -53,6 +57,10 @@ export interface FileReadOutcome {
   totalLines: number
   /** Whether selected output hit the byte cap. */
   truncatedByBytes?: true
+  /** Opaque version-bound token for the first unread position. */
+  continuation?: string
+  /** UTF-16 position within the first returned line when this is a resumed fragment. */
+  characterOffset?: number
 }
 
 interface WindowAccumulator {
@@ -60,43 +68,47 @@ interface WindowAccumulator {
   totalLines: number
   outputBytes: number
   truncatedByBytes: boolean
+  next?: { offset: number; characterOffset: number }
 }
 
 function newAccumulator(): WindowAccumulator {
   return { lines: [], totalLines: 0, outputBytes: 0, truncatedByBytes: false }
 }
 
-function truncateLine(line: string, maxLineLength: number): string {
-  return line.length > maxLineLength ? `${line.substring(0, maxLineLength)}... (line truncated to ${maxLineLength} chars)` : line
-}
-
 function lineByteSize(line: string, currentLineCount: number): number {
   return Buffer.byteLength(line, 'utf8') + (currentLineCount > 0 ? 1 : 0)
 }
 
-function consumeLine(acc: WindowAccumulator, rawLine: string, request: ReadWindow): void {
+function consumeLine(acc: WindowAccumulator, rawLine: string, lineLength: number, request: ReadWindow): void {
   acc.totalLines += 1
-  if (acc.truncatedByBytes || acc.totalLines < request.offset || acc.lines.length >= request.limit) return
+  if (acc.next !== undefined || acc.totalLines < request.offset || acc.lines.length >= request.limit) return
 
-  const text = truncateLine(rawLine, request.maxLineLength)
+  const start = acc.totalLines === request.offset ? request.characterOffset ?? 0 : 0
+  if (start > lineLength) throw new FsError('read continuation is past the end of its line; read the file again', 'FS_STALE_VERSION')
+  if (start > 0 && /[\uDC00-\uDFFF]/u.test(rawLine[0] ?? '')) throw new FsError('read continuation splits a Unicode character; read the file again', 'FS_STALE_VERSION')
+  let end = Math.min(rawLine.length, request.maxLineLength)
+  // Do not split a surrogate pair, even when the provider split it across chunks.
+  if (end > 0 && /[\uD800-\uDBFF]/u.test(rawLine[end - 1]!) && /[\uDC00-\uDFFF]/u.test(rawLine[end] ?? '')) end -= 1
+  const clipped = lineLength - start > end
+  if (clipped && end === 0) throw new FsError('readMaxLineLength cannot hold the next Unicode character', 'FS_TOO_LARGE')
+  const text = clipped ? `${rawLine.slice(0, end)}... (line truncated to ${request.maxLineLength} chars)` : rawLine.slice(0, end)
   const bytes = lineByteSize(text, acc.lines.length)
   if (acc.outputBytes + bytes > request.maxBytes) {
+    if (acc.lines.length === 0) throw new FsError('readMaxBytes cannot hold the first line fragment; increase the read byte cap', 'FS_TOO_LARGE')
     acc.truncatedByBytes = true
+    acc.next = { offset: acc.totalLines, characterOffset: start }
     return
   }
   acc.outputBytes += bytes
   acc.lines.push({ number: acc.totalLines, text })
-}
-
-function stripCarriageReturn(line: string): string {
-  return line.endsWith('\r') ? line.slice(0, -1) : line
+  if (clipped) acc.next = { offset: acc.totalLines, characterOffset: start + end }
 }
 
 function finish(acc: WindowAccumulator, request: ReadWindow, displayPath: string): WindowResult {
   if (!acc.truncatedByBytes && request.offset > acc.totalLines && !(acc.totalLines === 0 && request.offset === 1)) {
     throw new FsError(`offset ${request.offset} is out of range for "${displayPath}" (${acc.totalLines} lines)`, 'FS_NOT_FOUND')
   }
-  return { lines: acc.lines, totalLines: acc.totalLines, truncatedByBytes: acc.truncatedByBytes }
+  return { lines: acc.lines, totalLines: acc.totalLines, truncatedByBytes: acc.truncatedByBytes, ...acc.next === undefined ? {} : { next: acc.next } }
 }
 
 /**
@@ -115,18 +127,28 @@ export async function buildWindow(
 ): Promise<WindowResult> {
   const acc = newAccumulator()
   // One char past the truncation point is enough to prove a line overflows.
-  const lineBufferCap = request.maxLineLength + 1
+  const lineBufferCap = request.maxLineLength + 2
   let lineBuffer = ''
+  let lineLength = 0
+  let lastCharacter = ''
 
   function appendToLineBuffer(segment: string): void {
-    if (lineBuffer.length >= lineBufferCap) return
-    lineBuffer += segment
-    if (lineBuffer.length > lineBufferCap) lineBuffer = lineBuffer.slice(0, lineBufferCap)
+    const skip = acc.totalLines + 1 === request.offset ? request.characterOffset ?? 0 : 0
+    if (lineBuffer.length < lineBufferCap) {
+      const start = Math.max(0, skip - lineLength)
+      lineBuffer += segment.slice(start, start + lineBufferCap - lineBuffer.length)
+    }
+    lineLength += segment.length
+    if (segment.length > 0) lastCharacter = segment.at(-1)!
   }
 
   function flushLine(): void {
-    consumeLine(acc, stripCarriageReturn(lineBuffer), request)
+    const length = lineLength - (lastCharacter === '\r' ? 1 : 0)
+    const start = acc.totalLines + 1 === request.offset ? request.characterOffset ?? 0 : 0
+    consumeLine(acc, lineBuffer.slice(0, Math.max(0, length - start)), length, request)
     lineBuffer = ''
+    lineLength = 0
+    lastCharacter = ''
   }
 
   for await (const chunk of chunks) {
@@ -139,7 +161,7 @@ export async function buildWindow(
     }
     appendToLineBuffer(chunk.slice(startPos))
   }
-  if (lineBuffer.length > 0) flushLine()
+  if (lineLength > 0) flushLine()
   return finish(acc, request, displayPath)
 }
 
@@ -152,15 +174,18 @@ export async function buildWindow(
 export function formatReadOutput(displayPath: string, outcome: FileReadOutcome): string {
   const endLine = outcome.lines.at(-1)?.number ?? Math.max(0, outcome.offset - 1)
   let footer: string
-  if (outcome.truncatedByBytes) {
+  if (outcome.continuation !== undefined) {
+    footer = `(${outcome.truncatedByBytes ? 'Output capped. ' : ''}Content incomplete. Use continuation=${JSON.stringify(outcome.continuation)} with the same file_path to continue; omit offset.)`
+  } else if (outcome.truncatedByBytes) {
     footer = `(Output capped. Showing lines ${outcome.offset}-${endLine}. Use offset=${endLine + 1} to continue.)`
   } else if (endLine < outcome.totalLines) {
     footer = `(Showing lines ${outcome.offset}-${endLine} of ${outcome.totalLines}. Use offset=${endLine + 1} to continue.)`
   } else {
     footer = `(End of file - total ${outcome.totalLines} lines)`
   }
+  const resumed = (outcome.characterOffset ?? 0) > 0 ? `(Resumed within line ${outcome.offset} at UTF-16 position ${outcome.characterOffset}.)\n` : ''
   const body = outcome.lines.length > 0
-    ? `${outcome.lines.map(line => `${line.number}: ${line.text}`).join('\n')}\n\n${footer}`
+    ? `${resumed}${outcome.lines.map(line => `${line.number}: ${line.text}`).join('\n')}\n\n${footer}`
     : footer
   return `<path>${displayPath}</path>
 <type>file</type>

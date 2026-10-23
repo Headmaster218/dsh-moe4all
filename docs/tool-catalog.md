@@ -225,7 +225,7 @@ The bash tool is the model-facing consumer of the bash executor seam. A `run_in_
 
 ### `pwsh`
 
-Execute a PowerShell command (`pwsh -Command`) and return its stdout/stderr. Each call runs in a fresh pwsh process: no state (cwd, variables, functions) persists between calls — pass `workdir` instead of using `cd`. Paths use native Windows form (`C:\...`); read environment variables with `$env:NAME`. Non-zero exits are reported as `[exit code: N]`. Current harness environment facts are exposed through managed `$env:DSH_*` variables; inspect them when needed. Commands may run under a file sandbox; a blocked file operation is reported as `[sandbox: file access denied under <mode> mode]` — a policy denial, not a bug in the command; do not retry another way. Long output is truncated to its tail; the full output is saved to a file whose path is reported when available. On Windows a force-killed command settles as `[exit code: 1]` without a signal marker — treat it as an interruption, not a command failure. Set `run_in_background: true` for long-running commands: the call returns a job id immediately; read its output with `job_output` and stop it with `job_kill`.
+Execute a PowerShell command (`pwsh -Command`) and return its stdout/stderr. Each call runs in a fresh pwsh process: no state (cwd, variables, functions) persists between calls — pass `workdir` instead of using `cd`. Paths use native Windows form (`C:\...`); read environment variables with `$env:NAME`. Non-zero exits are reported as `[exit code: N]`. Current harness environment facts are exposed through managed `$env:DSH_*` variables; inspect them when needed. Commands may run under a file sandbox; a blocked file operation is reported as `[sandbox: file access denied under <mode> mode]` — a policy denial, not a bug in the command; do not retry another way. Long output is truncated to its tail; a saved-output path is reported when available, but the saved file may also be capped. Do not rerun side-effecting commands merely to recover omitted output. Exit code 1 alone does not identify a failure or interruption cause; inspect the output and explicit timeout/cancellation facts. Set `run_in_background: true` for long-running commands: the call returns a job id immediately; read its output with `job_output` and stop it with `job_kill`.
 
 ```json
 {
@@ -683,6 +683,10 @@ Read a UTF-8 text file and return line-numbered content.
     "limit": {
       "type": "number",
       "description": "Maximum number of lines to return. Defaults to 2000."
+    },
+    "continuation": {
+      "type": "string",
+      "description": "Opaque token from an incomplete read. Copy exactly, keep file_path unchanged, and omit offset."
     }
   },
   "required": [

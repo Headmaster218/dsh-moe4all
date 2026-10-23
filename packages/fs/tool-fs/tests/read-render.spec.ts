@@ -23,6 +23,35 @@ async function* chunked(text: string, size: number): AsyncIterable<string> {
 }
 
 describe('buildWindow', () => {
+  it('resumes a clipped line without skipping its suffix or the following lines', async () => {
+    const caps = { ...READ_ALL, maxLineLength: 3 }
+    const first = await buildWindow(chunked('abcdef\r\nnext', 1), caps, 'f')
+    expect(first.next).toEqual({ offset: 1, characterOffset: 3 })
+    expect(first.totalLines).toBe(2)
+    expect(first.lines).toHaveLength(1)
+    const second = await buildWindow(chunked('abcdef\r\nnext', 1), { ...caps, ...first.next }, 'f')
+    expect(second.lines[0]).toEqual({ number: 1, text: 'def' })
+    expect(second.next).toEqual({ offset: 2, characterOffset: 3 })
+    const third = await buildWindow(chunked('abcdef\r\nnext', 1), { ...caps, ...second.next }, 'f')
+    expect(third.lines).toEqual([{ number: 2, text: 't' }])
+    expect(third.next).toBeUndefined()
+  })
+
+  it('keeps Unicode pairs intact across chunks and continuation positions', async () => {
+    const first = await buildWindow(chunked('a\uD83D\uDE00b', 1), { ...READ_ALL, maxLineLength: 2 }, 'f')
+    expect(first.lines[0]?.text).toBe('a... (line truncated to 2 chars)')
+    expect(first.next).toEqual({ offset: 1, characterOffset: 1 })
+    const second = await buildWindow(chunked('a\uD83D\uDE00b', 1), { ...READ_ALL, maxLineLength: 2, ...first.next }, 'f')
+    expect(second.lines[0]?.text).toBe('\uD83D\uDE00... (line truncated to 2 chars)')
+    expect(second.next).toEqual({ offset: 1, characterOffset: 3 })
+  })
+
+  it('rejects a cap too small for progress rather than returning the same cursor forever', async () => {
+    await expect(buildWindow(['abc'], { ...READ_ALL, maxBytes: 1 }, 'f')).rejects.toMatchObject({ code: 'FS_TOO_LARGE' })
+    await expect(buildWindow(['\uD83D\uDE00'], { ...READ_ALL, maxLineLength: 1 }, 'f')).rejects.toMatchObject({ code: 'FS_TOO_LARGE' })
+    await expect(buildWindow(['abc'], { ...READ_ALL, characterOffset: 4 }, 'f')).rejects.toMatchObject({ code: 'FS_STALE_VERSION' })
+  })
+
   it('numbers lines and reports total for a whole-file read', async () => {
     const result = await buildWindow(whole('one\ntwo\nthree'), READ_ALL, 'f')
     expect(result.lines).toEqual([

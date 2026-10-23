@@ -31,12 +31,14 @@ await ctx.plugin(ToolFs)                                  // this package — re
 
 | 工具 | 参数 | 行为 |
 |---|---|---|
-| `read` | `file_path`、`offset?`、`limit?` | 带行号的 UTF-8 内容和分页 footer。`offset` 从 1 开始；`limit` 默认为配置的 `readLimit`（2000），上限也为该值。 |
+| `read` | `file_path`、`offset?`、`limit?`、`continuation?` | 带行号的 UTF-8 内容和分页 footer。`offset` 从 1 开始；`limit` 默认为配置的 `readLimit`（2000），上限也为该值。截断结果提供不透明的续读值；保持 file_path 不变复制该值，并省略 offset。 |
 | `read_image` | `file_path` | 通过有界字节 seam 读取 PNG/JPEG/WebP/GIF 文件，经 `ctx.attachments.saveImage` 持久保存，并在小型元数据信封旁返回图像块。Harness 会在下一次模型请求前校验并缩小受支持的大图，因此模型可以直接读取源文件，无需先创建缩略图。只有确切路由的模型声明图像输入时才会成功。 |
 | `write` | `file_path`、`content` | 创建文件或完整替换文件。有策略插件时：覆盖现有文件要求先在未变版本上执行 `read`；创建新文件不需要。没有插件时：无条件执行。 |
 | `edit` | `file_path`、非空 `old_string`、`new_string`、`replace_all?` | 字面量替换；除非 `replace_all` 为 true，否则要求唯一匹配。有策略插件时：要求先执行 `read`（任何窗口），且文件此后未变。没有插件时：无条件执行。 |
 
 字段名使用 snake_case，与 Claude Code 和现有 harness 工具 schema 一致。
+
+截断行会将窗口停在第一个未读片段，而不是跳到下一行。可选结果字段 `continuation`、`characterOffset` 和 `truncatedByBytes` 描述未完整读取的内容，最后一行截断时不会声称 EOF。续读绑定已解析的文件身份和版本，读取后再次核验；文件变化时返回 `FS_STALE_VERSION`。续读值只是位置而非授权令牌，常规路径解析和文件系统策略仍然生效。UTF-16 片段位置不会切断代理对。上限不足以返回首个片段时以 `FS_TOO_LARGE` 失败，不返回无法推进的续读值。
 
 结构化成功值分别为：`read` → `{ path, offset, lines: [{ number, text }], totalLines }`，`read_image` → `{ path, image: { attachmentId, mediaType, bytes, width, height, name?, originalDimensions?: { width, height } } }`，`write` → `{ path, operation: 'create' | 'update', before: string | null, after }`，`edit` → `{ path, before, after }`。`originalDimensions` 只在规范化过程缩小提交光栅时出现，并记录应用方向后的输入尺寸。原生渲染器会保留下方带行号的读取结果和变更确认。`write` 和 `edit` 从这些值派生可回放的 diff 卡片元数据，`read` 派生可回放的读取卡片窗口 `{ path, offset, lines, totalLines, lang? }`；仅用于执行的结构化值不会添加到 `tool/result`，图片渲染器则会发出由结果记录的持久图片块。
 
@@ -44,7 +46,7 @@ await ctx.plugin(ToolFs)                                  // this package — re
 
 工具**不**注入策略服务，也不检查任何缓存。每个工具通过 `ctx.fs.resolve(path, { cwd, signal })` 解析路径；它会传入调用 agent（智能体）的会话 cwd（`exec.agent.session.header.cwd`），使相对路径以会话工作区为基准解析并与 `dsh-tool-bash` 一致，同时把工具取消转发到解析过程（见[每会话 cwd Agent Note](../../../.agents/notes/implemented/architecture/2026-07-02-fs-per-session-cwd.zh.md)）。随后执行：
 
-- **read**：一次 `ctx.fs.stat`（用于类型、大小路由和版本），随后调用 `readText`/`streamText`，构建行窗口，再发出 `fs/observed`，使用普通 `ctx.emit`。（1 次 stat。）
+- **read**：一次 `ctx.fs.stat`（用于类型、大小路由和版本），随后调用 `readText`/`streamText`，构建行窗口，再发出 `fs/observed`，使用普通 `ctx.emit`。续读或截断窗口会在读取后额外 stat，验证续读的版本。（1 或 2 次 stat。）
 - **read_image**：在任何 I/O 之前校验参数、扩展名、附件可用性、部署接受的媒体类型和图像路由；随后一次 `ctx.fs.stat`（目标缺失时与 `read` 一样记录 `absent` 观察）、以 `imageLimits.maxImageBytes` 与 `imageLimits.maxMessageImageBytes` 中较小者为上限的有界 `ctx.fs.readBytes`（结果是携带一张图像的一条消息）、`attachments.saveImage`（内容寻址，因此在 `tool/result` 事件追加时图像块引用的对象已持久提交），最后发出 `fs/observed`。（1 次 stat。）
 - **write**：调用 `ctx.waterfall('fs/write-intent', target, exec, () => undefined)` 取得可选防护，然后调用 `ctx.fs.writeText(target, content, intent)`，再发出 `fs/observed`。（0 次 stat。）
 - **edit**：调用 `ctx.waterfall('fs/edit-intent', target, exec, () => undefined)` 取得可选防护，然后调用 `ctx.fs.editText(target, edit, intent)`，再发出 `fs/observed`。（0 次 stat。）

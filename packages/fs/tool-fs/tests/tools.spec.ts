@@ -202,6 +202,53 @@ describe('registration', () => {
 })
 
 describe('read tool', () => {
+  it('continues a long final line without falsely reporting EOF and rejects stale or cross-file tokens', async () => {
+    const { ctx, fs } = await setup()
+    fs.files.set('key:long.css', 'x'.repeat(2300))
+    fs.files.set('key:other.css', 'other')
+    try {
+      const first = await call(ctx, 'read', { file_path: 'long.css' })
+      expect(first.isError).toBe(false)
+      const value = first.value as { continuation: string }
+      expect(value.continuation).toEqual(expect.any(String))
+      expect(text(first)).toContain('Content incomplete.')
+      expect(text(first)).not.toContain('End of file')
+      const second = await call(ctx, 'read', { file_path: 'long.css', continuation: value.continuation })
+      expect(second.isError).toBe(false)
+      expect(second.value).toMatchObject({ characterOffset: 2000, lines: [{ number: 1, text: 'x'.repeat(300) }] })
+      expect(text(second)).toContain('End of file - total 1 lines')
+      expect(text(second)).toContain('Resumed within line 1')
+      const wrongFile = await call(ctx, 'read', { file_path: 'other.css', continuation: value.continuation })
+      expect(wrongFile.error).toMatchObject({ info: { code: 'FS_STALE_VERSION' } })
+      fs.stat = async () => ({ version: FsVersion('v2'), type: 'file' })
+      const stale = await call(ctx, 'read', { file_path: 'long.css', continuation: value.continuation })
+      expect(stale.error).toMatchObject({ info: { code: 'FS_STALE_VERSION' } })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('refuses invalid tokens, conflicting offsets and files changed during a partial read', async () => {
+    const { ctx, fs } = await setup()
+    fs.files.set('key:long.txt', 'z'.repeat(2300))
+    try {
+      for (const continuation of ['!', Buffer.from('null').toString('base64url'), Buffer.from('{"offset":0}').toString('base64url')]) {
+        const result = await call(ctx, 'read', { file_path: 'long.txt', continuation })
+        expect(result.isError).toBe(true)
+        expect(text(result)).toContain('invalid read continuation')
+      }
+      const conflict = await call(ctx, 'read', { file_path: 'long.txt', continuation: 'abc', offset: 1 })
+      expect(text(conflict)).toContain('omit offset')
+      vi.spyOn(fs, 'stat')
+        .mockResolvedValueOnce({ version: FsVersion('v1'), type: 'file', size: 2300 })
+        .mockResolvedValueOnce({ version: FsVersion('v2'), type: 'file', size: 2300 })
+      const changed = await call(ctx, 'read', { file_path: 'long.txt' })
+      expect(changed.error).toMatchObject({ info: { code: 'FS_STALE_VERSION' } })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('formats line-numbered content with a footer', async () => {
     const { ctx, fs } = await setup()
     fs.files.set('key:a.txt', 'hello\nworld')
