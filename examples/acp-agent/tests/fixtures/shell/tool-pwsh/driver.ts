@@ -26,6 +26,12 @@ try {
     arguments: { command: 'Write-Output loader-ok', description: 'loader foreground' },
   })
   const foregroundText = foreground.content.filter(block => block.type === 'text').map(block => block.text).join('')
+  const encoding = await ctx.tools.execute({
+    signal: new AbortController().signal,
+    callId: CallId('loader-encoding'),
+    name: 'pwsh',
+    arguments: { command: 'Write-Output "$env:PYTHONUTF8/$env:PYTHONIOENCODING"', description: 'Python encoding defaults' },
+  })
 
   const background = await ctx.tools.execute({
     signal: new AbortController().signal,
@@ -60,6 +66,7 @@ try {
     promptHasMarkerSection: prompt?.text.includes('Non-zero exits are reported as `[exit code: N]` markers') === true,
     // Normalize PowerShell's platform line endings (CRLF on Windows, LF elsewhere).
     foregroundText: foregroundText.replace(/\r\n/g, '\n'),
+    encodingText: encoding.content.filter(block => block.type === 'text').map(block => block.text).join('').replace(/\r\n/g, '\n'),
     backgroundText: backgroundText.replace(/\r\n/g, '\n'),
   }))
 } finally {

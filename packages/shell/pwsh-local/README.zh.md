@@ -34,6 +34,7 @@
 - **受管进程组之上的配置预算**——`resolve()` 从配置填充 `workdir`/`timeoutMs`/`stdoutMaxBytes`，每次 spawn 都向服务提供显式字节上限、spill 上限与 `graceMs`。该宽限期须为正有限值，且不得大于 [`MAX_TIMER_DELAY_MS`](../../util/timeout/README.zh.md)，这样 Node 就能用一个定时器表示它。进程树终止（Windows 用 taskkill，POSIX 用进程组信号）、退出后管道排空宽限、保尾截断与有界 spill 文件是 [`dsh-subprocess-local`](../../subprocess/subprocess-local/README.zh.md) 的机制。前台 `ShellExecRequest.stdoutMaxBytes` 可为单个受信调用方提高 stdout 捕获预算；stderr 与后台运行仍使用 `maxOutputBytes`。
 - **超时与取消分类**——`run()` 通过一个 deadline 融合按配置上限截取的超时与调用方信号；只有执行器自身超时报告 `timedOut`，上游取消报告 `aborted`，自我终止的命令两者都不报告（见 [timeout 库 Agent Note](../../../.agents/notes/implemented/architecture/2026-07-06-timeout-deadline-library.zh.md)）。Windows 将强制终止报告为退出码 1 且无信号，因此带信号标记的事实（`signal`、`killed` 状态）在那里仅限 POSIX；超时/取消分类与平台无关。
 - **面向模型的终端环境**——`NO_COLOR=1 PAGER=cat GIT_PAGER=cat`（没有 `TERM=dumb`：那是 POSIX 概念；现代 PowerShell 渲染器遵循 `NO_COLOR`），作为普通 env 在服务的凭据清理与 `DSH_*` 通道规则之下合并；显式调用方条目仍然优先。
+- **Python 文本编码**——子命令接收 `PYTHONUTF8=1 PYTHONIOENCODING=utf-8`，与 PowerShell 管道输出和 UTF-8 收集器一致，同时将 Python 默认文本文件编码设为 UTF-8。可信调用方的 `ShellExecRequest.env` 或命令自身可为旧编码数据覆盖这些变量；不修改宿主环境或已安装的 Python 环境。这些变量不负责选择解释器，也不修复 DLL 缺失。
 - **后台进程**——`start()` 立即返回存活的 `ShellProcess` 句柄，不设超时；句柄的 `readOutput()` 把服务基于偏移的 stdout/stderr 读取合并为一条按分段标记、通过消费游标推进的增量。仍在运行的进程属于 subprocess 服务，因此它跨执行器重载存活，并随服务 dispose（被终止并 join）。一切任务相关职责（job id、所有权、轮询、通知）都在通用 [`ctx.jobs` 运行时](../../jobs/jobs/README.zh.md) 中，由工具层把句柄注册进去——本执行器从不接触会话或注册表。
 
 ## 模型体验

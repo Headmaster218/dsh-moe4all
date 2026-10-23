@@ -33,6 +33,7 @@ interface PwshLoaderReport {
   schemaHasRunInBackground: boolean
   promptHasMarkerSection: boolean
   foregroundText: string
+  encodingText: string
   backgroundText: string
 }
 
@@ -57,6 +58,7 @@ describe.skipIf(!hasPwsh)('tool-pwsh through a real Loader composition', () => {
       promptHasMarkerSection: true,
     })
     expect(report?.foregroundText).toBe('loader-ok\n')
+    expect(report?.encodingText).toBe('1/utf-8\n')
     expect(report?.backgroundText).toContain('loader-bg-ok')
     expect(report?.backgroundText).toContain('[status: completed, exit code: 0]')
   }, LOADER_SMOKE_TEST_TIMEOUT_MS)

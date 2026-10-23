@@ -186,6 +186,22 @@ describe('spawn construction (pure, every platform)', () => {
     expect(argv[5]).toBe(`${ENCODING_PREAMBLE}Write-Output 你好`)
     expect(ENCODING_PREAMBLE).toContain('[Console]::OutputEncoding')
     expect(ENCODING_PREAMBLE).toContain('$OutputEncoding')
+    expect(subprocess.specs[0]?.env).toMatchObject({ PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' })
+    await ctx.fiber.dispose()
+  })
+
+  it('lets trusted callers override Python encoding for legacy commands without changing the host', async () => {
+    const before = { utf8: process.env.PYTHONUTF8, io: process.env.PYTHONIOENCODING }
+    const ctx = new Context()
+    const subprocess = new CapturingSubprocessRuntime(ctx)
+    await ctx.plugin(PwshLocalExecutor)
+    try {
+      await ctx.shell.run(ctx.shell.resolve({ command: 'exit 0', env: { PYTHONUTF8: '0', PYTHONIOENCODING: 'gbk' } }))
+      expect(subprocess.specs[0]?.env).toMatchObject({ PYTHONUTF8: '0', PYTHONIOENCODING: 'gbk' })
+      expect({ utf8: process.env.PYTHONUTF8, io: process.env.PYTHONIOENCODING }).toEqual(before)
+    } finally {
+      await ctx.fiber.dispose()
+    }
   })
 })
 

@@ -35,6 +35,8 @@ export const ENV_OVERRIDES = {
   NO_COLOR: '1',
   PAGER: 'cat',
   GIT_PAGER: 'cat',
+  PYTHONUTF8: '1',
+  PYTHONIOENCODING: 'utf-8',
 } as const
 
 /**
