@@ -10,7 +10,8 @@
 |---|---:|---|
 | `backendType` | `shell` | 每个 Agent shell 使用的已注册 terminal backend。 |
 | `timeoutMs` | `300000` | 单条命令的墙钟上限；超时关闭 shell。 |
-| `maxOutputChars` | `16000` | 保留的命令输出字符上限；固定诊断文本在其后追加。 |
+| `maxOutputBytes` | `4000` | 保留的 UTF-8 命令输出字节上限；固定诊断文本在其后追加。 |
+| `maxOutputChars` | 未设置 | 已弃用的别名，仅在未设置 `maxOutputBytes` 时用作字节上限。 |
 | `description` | 持久 shell 描述 | 模型可见的环境契约。 |
 
 ## 模型体验
@@ -39,9 +40,11 @@
 
 超时诊断以秒报告配置的时限，包括不足一秒的时限，不推断为内存不足故障。
 
+截断建议针对命令输出，不假定存在文件。它建议缩小只读查询范围，或检查命令已经保存的输出，并提醒不要仅为找回省略的输出而重跑有副作用的命令。工具不会创建完整输出文件。
+
 #### Token 影响
 
-数据相关。`maxOutputChars` 限制保留的命令输出；固定裁剪、前缀丢失、状态、超时与重置诊断可能扩展结果。
+数据相关。`maxOutputBytes` 限制保留的命令输出，不拆分 UTF-8 字符；固定裁剪、前缀丢失、状态、超时与重置诊断可能扩展结果。
 
 #### KV Cache 影响
 
@@ -50,7 +53,7 @@
 ## 已知限制与延后工作
 
 - 工具需要拥有 Agent 与一个真实支持 pwsh 方言的 terminal backend（Windows ConPTY 或 POSIX 上的 pwsh）。
-- **输入回显不可避免**：PowerShell 的 PSReadLine 会把提交的输入渲染回终端流，且没有 `stty -echo` 的对应物。完整结果中 marker 锚定提取排除回显；包装器原文剥离覆盖回退路径，但跨越终端宽度的包装器折行可能在部分输出结果中残留片段回显，受 `maxOutputChars` 约束。
+- **输入回显不可避免**：PowerShell 的 PSReadLine 会把提交的输入渲染回终端流，且没有 `stty -echo` 的对应物。完整结果中 marker 锚定提取排除回显；包装器原文剥离覆盖回退路径，但跨越终端宽度的包装器折行可能在部分输出结果中残留片段回显，受 `maxOutputBytes` 约束。
 - 模型命令中的裸 ESC 字符不受支持：PSReadLine 会在执行前吞掉它们。包装器转义它需要的控制字节（`[char]27` 构造的 OSC 标记、body 的反引号转义）。
 - 模型重定义 `prompt` 函数会移除就绪标记；shell 随后退化为静默档而非 marker 快路径。
 - 命令执行期间没有交互 stdin：读取输入的前台命令会阻塞到就绪超时，随后重置 shell。

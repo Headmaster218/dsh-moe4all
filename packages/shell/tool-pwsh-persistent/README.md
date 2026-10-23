@@ -10,7 +10,8 @@ Model-facing `pwsh(command)` backed by one owner-scoped `ctx.terminals` shell. T
 |---|---:|---|
 | `backendType` | `shell` | Registered terminal backend used for each Agent shell. |
 | `timeoutMs` | `300000` | Wall-clock limit for one command; timeout closes the shell. |
-| `maxOutputChars` | `16000` | Maximum retained command-output characters; fixed diagnostics are added afterward. |
+| `maxOutputBytes` | `4000` | Maximum retained UTF-8 command-output bytes; fixed diagnostics are added afterward. |
+| `maxOutputChars` | Unset | Deprecated alias, used as a byte limit only when `maxOutputBytes` is unset. |
 | `description` | Persistent-shell description | Model-facing environment contract. |
 
 ## Model Experience
@@ -39,9 +40,11 @@ Completion status accepts terminal padding spaces before LF or CRLF; a marker wi
 
 Timeout diagnostics report the configured limit in seconds, including subsecond limits, without inferring an out-of-memory failure.
 
+Clipping advice refers to command output, not an assumed file. It suggests narrowing read-only queries or inspecting output already saved by the command, and warns against rerunning side-effecting commands merely to recover omitted output. The tool does not create a full-output file.
+
 #### Token effect
 
-Data-dependent. `maxOutputChars` bounds retained command output; fixed clipping, lost-prefix, status, timeout, and reset diagnostics can extend the result.
+Data-dependent. `maxOutputBytes` bounds retained command output without splitting a UTF-8 character; fixed clipping, lost-prefix, status, timeout, and reset diagnostics can extend the result.
 
 #### KV Cache effect
 
@@ -50,7 +53,7 @@ Append-only tool results follow the reusable request prefix.
 ## Known Limitations and Deferred Work
 
 - The tool requires an owning Agent and a real terminal backend with a pwsh dialect (Windows ConPTY or a POSIX pwsh).
-- **Input echo is unavoidable**: PowerShell's PSReadLine renders submitted input back into the terminal stream, and there is no `stty -echo` equivalent. The marker-anchored extraction excludes the echo in complete results; the wrapper-source strip covers fallback paths, but a wrapper that wraps across the terminal width may leave a partial echo in partial-output results, bounded by `maxOutputChars`.
+- **Input echo is unavoidable**: PowerShell's PSReadLine renders submitted input back into the terminal stream, and there is no `stty -echo` equivalent. The marker-anchored extraction excludes the echo in complete results; the wrapper-source strip covers fallback paths, but a wrapper that wraps across the terminal width may leave a partial echo in partial-output results, bounded by `maxOutputBytes`.
 - Raw ESC characters inside model commands are unsupported: PSReadLine consumes them before execution. The wrapper escapes the control bytes it needs (`[char]27`-built OSC markers, backtick escapes for the body).
 - A model redefinition of the `prompt` function removes the readiness marker; the shell then settles on the silence tier instead of the marker fast path.
 - There is no interactive stdin during a command: a foreground command that reads input blocks until the readiness timeout, which resets the shell.

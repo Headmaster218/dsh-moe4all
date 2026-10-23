@@ -414,6 +414,21 @@ describe('tool-bash-persistent', () => {
     expect(prefix).not.toContain('\uFFFD')
   })
 
+  it.each([1, 10, 100])('describes clipped command output accurately at a %i-byte limit', async (limit) => {
+    const { ctx, owner, stub } = await setup({ backendType: 'stub', maxOutputBytes: limit })
+    await call(ctx, owner, 'warm up')
+    stub.sessions[0]!.mode = 'large'
+    const result = text(await call(ctx, owner, 'large output'))
+    expect(result.slice(0, limit)).toBe('x'.repeat(limit))
+    if (limit === 100) {
+      expect(result).toHaveLength(100)
+    } else {
+      expect(result.slice(limit)).toMatchInlineSnapshot(
+        `"<response clipped><NOTE>Command output is incomplete; only the earliest retained portion is shown. If more output is needed, narrow a read-only query or inspect output saved by the command. Do not rerun commands with side effects just to retrieve omitted output.</NOTE>"`,
+      )
+    }
+  })
+
   it('waits for status digits after a torn completion marker', async () => {
     const { ctx, owner, stub } = await setup({ backendType: 'stub', maxOutputBytes: 1_000 })
     await call(ctx, owner, 'warm up')

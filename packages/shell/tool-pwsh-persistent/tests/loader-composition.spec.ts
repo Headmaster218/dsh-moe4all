@@ -164,7 +164,9 @@ describe.skipIf(!hasPwsh)('persistent pwsh through a real cordis.yml Loader comp
 
     const large = text(await execute('large-output', '1..12050 | ForEach-Object { $_ }'))
     expect(large.startsWith('1\n2\n3\n')).toBe(true)
-    expect(large).toContain('<response clipped>')
+    expect(large.slice(large.indexOf('<response clipped>'))).toMatchInlineSnapshot(
+      `"<response clipped><NOTE>Command output is incomplete; only the earliest retained portion is shown. If more output is needed, narrow a read-only query or inspect output saved by the command. Do not rerun commands with side effects just to retrieve omitted output.</NOTE>"`,
+    )
     expect(large).not.toContain('beginning of this command output was dropped')
 
     const exited = text(await execute('exit', 'exit'))

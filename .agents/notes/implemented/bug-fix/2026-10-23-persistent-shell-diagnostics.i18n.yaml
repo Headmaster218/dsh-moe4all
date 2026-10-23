@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-10-23-persistent-shell-diagnostics.md
-2026-10-23-persistent-shell-diagnostics.md: d98c8d1cd0a44bf6a769e054010868381213c0da
-2026-10-23-persistent-shell-diagnostics.zh.md: 52c686f74609059833736571de224138ed9a97f3
+2026-10-23-persistent-shell-diagnostics.md: 0a107444c03790f62cebf29543bbac364375be05
+2026-10-23-persistent-shell-diagnostics.zh.md: 928419f8650930ae36cfed0c3a264470ed263c32

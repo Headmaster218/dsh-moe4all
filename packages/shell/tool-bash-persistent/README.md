@@ -10,7 +10,8 @@ Model-facing `bash(command)` backed by one owner-scoped `ctx.terminals` shell. T
 |---|---:|---|
 | `backendType` | `shell` | Registered PTY backend used for each Agent shell. |
 | `timeoutMs` | `300000` | Wall-clock limit for one command; timeout closes the shell. |
-| `maxOutputChars` | `16000` | Maximum retained command-output characters; fixed diagnostics are added afterward. |
+| `maxOutputBytes` | `4000` | Maximum retained UTF-8 command-output bytes; fixed diagnostics are added afterward. |
+| `maxOutputChars` | Unset | Deprecated alias, used as a byte limit only when `maxOutputBytes` is unset. |
 | `description` | Persistent-shell description | Model-facing environment contract. |
 
 ## Model Experience
@@ -37,9 +38,11 @@ Commands share one shell per Agent, so cwd, exported variables, activated enviro
 
 Timeout diagnostics report the configured limit in seconds, including subsecond limits, without inferring an out-of-memory failure.
 
+Clipping advice refers to command output, not an assumed file. It suggests narrowing read-only queries or inspecting output already saved by the command, and warns against rerunning side-effecting commands merely to recover omitted output. The tool does not create a full-output file.
+
 #### Token effect
 
-Data-dependent. `maxOutputChars` bounds retained command output; fixed clipping, lost-prefix, status, timeout, and reset diagnostics can extend the result.
+Data-dependent. `maxOutputBytes` bounds retained command output without splitting a UTF-8 character; fixed clipping, lost-prefix, status, timeout, and reset diagnostics can extend the result.
 
 #### KV Cache effect
 
