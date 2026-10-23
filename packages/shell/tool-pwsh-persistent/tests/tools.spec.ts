@@ -117,6 +117,8 @@ class StubTerminalSession implements TerminalBackendSession {
   pendingText = ''
   historyTruncated = false
   throwOnSend = false
+  completionPadding = ''
+  completionNewline = '\n'
 
   constructor(mode: StubMode) {
     this.mode = mode
@@ -222,7 +224,7 @@ class StubTerminalSession implements TerminalBackendSession {
         : this.mode === 'prompt-collision' ? this.motd
           : 'hello from stub'
     const exitCode = this.mode === 'nonzero' ? 7 : 0
-    const output = `${start ?? ''}\n${commandOutput}\n${end ?? ''}${exitCode}\n${this.motd}`
+    const output = `${start ?? ''}\n${commandOutput}\n${end ?? ''}${exitCode}${this.completionPadding}${this.completionNewline}${this.motd}`
     this.scrollback += output
     if (this.mode === 'exit' || this.mode === 'signal-exit' || this.mode === 'unknown-exit') {
       const exitedOutput = `${start ?? ''}\nhello from stub\n`
@@ -374,6 +376,24 @@ describe('tool-pwsh-persistent', () => {
 
     session.mode = 'prompt-collision'
     expect(text(await call(ctx, owner, 'complete prompt collision'))).toBe(session.motd)
+  })
+
+  it.each([
+    ['normal', '\n', 'hello from stub'],
+    ['normal', '\r\n', 'hello from stub'],
+    ['nonzero', '\n', '[exit code: 7]'],
+    ['nonzero', '\r\n', '[exit code: 7]'],
+  ] as const)('recognizes space-padded %s completion with %j', async (mode, newline, expected) => {
+    const { ctx, owner, stub } = await setup({ backendType: 'stub' })
+    await call(ctx, owner, 'warm up')
+    const session = stub.sessions[0]!
+    session.mode = mode
+    session.completionPadding = '   '
+    session.completionNewline = newline
+
+    expect(text(await call(ctx, owner, 'padded status'))).toBe(expected)
+    expect(session.closed).toEqual([])
+    expect(session.sends).toBe(3)
   })
 
   it('reports the exit path when the shell exits between send settlement and the next poll', async () => {
