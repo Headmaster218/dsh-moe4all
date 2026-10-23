@@ -38,6 +38,7 @@ import { parseExitStatus } from '@deepseek-ai/dsh-shell'
 import { processOutcome } from './background.ts'
 import { renderPwshProcessRead, renderPwshResult } from './render.ts'
 import type { RenderablePwshResult } from './render.ts'
+import { inspectEnvironment } from './environment.ts'
 
 declare module '@deepseek-ai/dsh-jobs' {
   interface JobKindMap {
@@ -52,11 +53,17 @@ export const inject = ['tools', 'shell', 'systemPrompt', 'shellEnv']
 export interface Config {
   /** Expose `run_in_background` (default true); disabled calls are also rejected. */
   enableRunInBackground?: boolean
+  /** Per-command timeout for shell_environment inspection (default 3000 ms). */
+  environmentProbeTimeoutMs?: number
+  /** Maximum interpreter candidates checked by shell_environment (default 4). */
+  environmentMaxCandidates?: number
 }
 
 /** Runtime configuration schema for the pwsh tool plugin. */
 export const Config: z<Config> = z.object({
   enableRunInBackground: z.boolean().default(true),
+  environmentProbeTimeoutMs: z.number().default(3000),
+  environmentMaxCandidates: z.number().default(4),
 })
 
 /** Parsed tool args; execute validates value constraints absent from ParameterSchemaSpec. */
@@ -191,6 +198,11 @@ const BACKGROUND_OUTPUT_PROPERTIES = {
 /* jscpd:ignore-start -- deliberate mirror of dsh-tool-bash's apply() preamble (pwsh-tool-and-executor Agent Note). */
 export function apply(ctx: Context, config: Config = {}): void {
   const backgroundEnabled = config.enableRunInBackground ?? true
+  const probeTimeout = config.environmentProbeTimeoutMs ?? 3000
+  const maxCandidates = config.environmentMaxCandidates ?? 4
+  if (!Number.isFinite(probeTimeout) || probeTimeout <= 0 || !Number.isSafeInteger(maxCandidates) || maxCandidates <= 0) {
+    throw new Error('tool-pwsh: environmentProbeTimeoutMs must be positive and finite; environmentMaxCandidates must be a positive safe integer')
+  }
   const defaultMode = ctx.shell.sandboxMode
   const escalationModes: readonly SandboxMode[] = defaultMode === undefined ? [] : ESCALATION_TARGETS
   const sandboxPolicy: SandboxPolicyService | undefined = defaultMode === undefined ? undefined : ctx.get('sandboxPolicy')
@@ -452,5 +464,34 @@ export function apply(ctx: Context, config: Config = {}): void {
       return { card: 'terminal', output: body, ...exit }
     },
     /* jscpd:ignore-end */
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'shell_environment',
+    description: 'Inspect the actual PowerShell version, language mode, tool paths, cache paths and Python startup in the current sandbox. Use before guessing interpreters or installing packages. Project venv candidates come first. Does not select, install or repair an environment, import project packages, or request wider permissions.',
+    parameters: {
+      workdir: { type: 'string', description: 'Directory to inspect; defaults to the session workspace.' },
+      python_executable: { type: 'string', description: 'Optional explicitly selected interpreter path. If it fails, no other interpreter is substituted.' },
+    },
+    output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] },
+    async execute(args: { workdir?: string; python_executable?: string }, exec) {
+      if (args.python_executable !== undefined && args.python_executable.trim().length === 0) throw new Error('python_executable must not be empty')
+      const policy = resolveSandboxPolicy(exec)
+      const workdir = resolveWorkdir(args.workdir, exec)
+      const dshEnv = ctx.shellEnv.collect(exec)
+      const result = await inspectEnvironment(async command => {
+        exec.signal.throwIfAborted()
+        const result = await ctx.shell.run(ctx.shell.resolve({ command, workdir, timeoutMs: probeTimeout,
+          stdoutMaxBytes: 16_000, dshEnv, sandboxPolicy: policy, signal: exec.signal }))
+        if (result.aborted) {
+          const error = new HarnessError('tool call aborted', TOOL_ABORTED)
+          error.name = 'AbortError'
+          throw error
+        }
+        return result
+      }, { ...args.python_executable === undefined ? {} : { python: args.python_executable }, maxCandidates })
+      return JSON.stringify(result)
+    },
+    presentCall: () => ({ card: 'generic' as const, title: 'Inspect shell environment', kind: 'read' as const }),
   }))
 }

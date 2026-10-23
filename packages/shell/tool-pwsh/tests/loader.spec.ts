@@ -34,6 +34,7 @@ interface PwshLoaderReport {
   promptHasMarkerSection: boolean
   foregroundText: string
   encodingText: string
+  environmentText: string
   foregroundMeta: unknown
   backgroundText: string
 }
@@ -60,6 +61,8 @@ describe.skipIf(!hasPwsh)('tool-pwsh through a real Loader composition', () => {
     })
     expect(report?.foregroundText).toBe('loader-ok\n')
     expect(report?.encodingText).toBe('1/utf-8\n')
+    expect(JSON.parse(report!.environmentText)).toMatchObject({ status: 'inspected',
+      python: [{ source: 'explicit', startup: 'failed' }], candidatesOmitted: 0 })
     expect(report?.foregroundMeta).toMatchObject({ kind: 'foreground', exitCode: 0, timedOut: false, aborted: false })
     expect(report?.backgroundText).toContain('loader-bg-ok')
     expect(report?.backgroundText).toContain('[status: completed, exit code: 0]')

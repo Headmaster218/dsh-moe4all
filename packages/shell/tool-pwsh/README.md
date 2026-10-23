@@ -4,13 +4,19 @@ English | [中文](README.zh.md)
 
 The model-facing `pwsh` tool registered over the `ctx.shell` executor seam. Intended for Windows compositions where a PowerShell executor (e.g. `@deepseek-ai/dsh-pwsh-local`) backs `ctx.shell`; the tool contract is PowerShell-dialect: native `C:\...` paths and `$env:NAME` variables. Behavior mirrors `dsh-tool-bash` call-for-call — foreground and `run_in_background` execution through the generic job runtime, the managed `DSH_*` environment through the shared `shell-env` registry, the sandbox denial rendering with the same-turn `sandbox_permissions` escalation surface, and the bash marker/truncation rendering story (a clean exit produces no marker).
 
-Requires a loaded executor implementation and the `shell-env` plugin; the tool stays pending until both exist (`inject: ['tools', 'bash', 'systemPrompt', 'bashEnv']`).
+Requires a loaded executor implementation and the `shell-env` plugin; the tools stay pending until both exist (`inject: ['tools', 'shell', 'systemPrompt', 'shellEnv']`).
 
 The package root exposes only the Cordis plugin contract (`name`, `inject`, `Config`, `apply`); result rendering (`src/render.ts`) and background-job adaptation (`src/background.ts`) mirror the bash tool's structure and stay reachable through the package's `./src/*` export.
 
 The plugin also contributes the `tool:pwsh` prompt section (order 105): exit status is distinct from its cause, stderr can contain normal output, and environment activation does not persist between calls.
 
 ## Tools
+
+### `shell_environment`
+
+Inspects the session workspace, actual PowerShell version/language mode, selected tool paths, uv/pip/npm cache settings, and Python startup. Optional `workdir` follows the same session-relative resolution as `pwsh`; `python_executable` restricts inspection to that explicit path. Otherwise `.venv`/`venv` candidates precede PATH applications, with duplicate paths removed. Each candidate is started through the same executor, standing sandbox policy and cancellation signal; no escalation is requested. `environmentProbeTimeoutMs` defaults to 3000 per subprocess, subject to the executor cap; `environmentMaxCandidates` defaults to 4. Both settings must be positive, with an integer candidate count. Each subprocess capture is bounded to 16000 stdout bytes; truncated or malformed output is not credited as a successful inspection.
+
+The result is JSON text with shell facts, individual Python startup outcomes, omitted-candidate count and usage limits. Python is started with `-I -S -B -X utf8`: no project imports, site/.pth startup hooks or bytecode writes. Startup success does not establish dependency, pip, Conda activation or DLL health. A failed project or explicit candidate is reported, never silently replaced or selected. No package installation, interpreter download, environment activation or global configuration change occurs. Discovery covers common project directories and PATH, not all installed environments. This additional tool has a fixed schema cost; results enter model history only when called.
 
 ### `pwsh`
 
@@ -66,7 +72,7 @@ Prefix-stable while the registration scope and prompt text are unchanged. Plugin
 
 #### What the model sees
 
-The model sees the generated [`pwsh` schema](../../../docs/tool-catalog.md#deepseek-aidsh-tool-pwsh). Agent-scoped tool restrictions can remove the definition for that agent.
+The model sees the generated [`pwsh` and `shell_environment` schemas](../../../docs/tool-catalog.md#deepseek-aidsh-tool-pwsh). Agent-scoped tool restrictions can remove definitions for that agent.
 
 #### Token effect
 

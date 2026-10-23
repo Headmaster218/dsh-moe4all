@@ -4,13 +4,19 @@
 
 注册在 `ctx.shell` 执行器 seam 之上的面向模型的 `pwsh` 工具。面向由 PowerShell 执行器（如 `@deepseek-ai/dsh-pwsh-local`）支撑 `ctx.shell` 的 Windows 组合；工具约定是 PowerShell 方言：原生 `C:\...` 路径与 `$env:NAME` 变量。行为与 `dsh-tool-bash` 逐调用对齐——通过通用任务运行时执行前台与 `run_in_background`、通过共享 `shell-env` 注册表管理 `DSH_*` 环境、sandbox 拒绝渲染与同轮次 `sandbox_permissions` 升级面、以及 bash 的 marker/截断渲染故事（干净退出不产生 marker）。
 
-需要已加载的执行器实现与 `shell-env` 插件；两者都存在前工具保持 pending（`inject: ['tools', 'bash', 'systemPrompt', 'bashEnv']`）。
+需要已加载的执行器实现与 `shell-env` 插件；两者都存在前工具保持 pending（`inject: ['tools', 'shell', 'systemPrompt', 'shellEnv']`）。
 
 包根只导出 Cordis 插件约定（`name`、`inject`、`Config`、`apply`）；结果渲染（`src/render.ts`）与后台任务适配（`src/background.ts`）镜像 bash 工具的结构，并可通过包的 `./src/*` 导出访问。
 
 插件还贡献 `tool:pwsh` 提示词段落（order 105）：退出状态不等于根因，stderr 可能是正常输出，环境激活不会跨调用保留。
 
 ## 工具
+
+### `shell_environment`
+
+检查会话工作区、实际 PowerShell 版本及语言模式、部分工具路径、uv/pip/npm 缓存设置，以及 Python 启动能力。可选 `workdir` 与 `pwsh` 一样按会话工作区解析；`python_executable` 将检查限定到显式指定的路径。否则先检查 `.venv`/`venv`，再检查 PATH 中的应用，并去除重复路径。每个候选都通过原执行器、会话既有沙箱策略和取消信号运行，不请求提权。`environmentProbeTimeoutMs` 默认每个子进程 3000 ms，仍受执行器上限约束；`environmentMaxCandidates` 默认 4。两项都必须为正值，候选数量必须为整数。每次 stdout 捕获上限为 16000 字节；输出截断或格式无效时不认定检查成功。
+
+返回 JSON 文本，包含 shell 事实、各 Python 候选的启动结果、未检查候选数量及使用边界。Python 使用 `-I -S -B -X utf8` 启动，不导入项目模块、不执行 site/.pth 启动钩子、不写字节码。启动成功不代表依赖、pip、Conda 激活或 DLL 健康。项目或显式候选失败会如实报告，不静默替换或选择解释器。不安装包、不下载解释器、不激活环境、不修改全局配置。发现范围是常见项目目录与 PATH，不是全机环境清单。新增工具带来固定 schema 开销，结果只在调用后进入模型历史。
 
 ### `pwsh`
 
@@ -66,7 +72,7 @@ Non-zero exits are reported as `[exit code: N]` markers; investigate failures be
 
 #### 模型看到的内容
 
-模型看到生成的 [`pwsh` schema](../../../docs/tool-catalog.zh.md#deepseek-aidsh-tool-pwsh)。按 agent 作用域的工具限制可以移除该 agent 的定义。
+模型看到生成的 [`pwsh` 与 `shell_environment` schema](../../../docs/tool-catalog.zh.md#deepseek-aidsh-tool-pwsh)。按 agent 作用域的工具限制可以移除该 agent 的定义。
 
 #### Token 影响
 

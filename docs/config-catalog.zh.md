@@ -2689,10 +2689,14 @@ export interface Config {
 export interface Config {
   /** Expose `run_in_background` (default true); disabled calls are also rejected. */
   enableRunInBackground?: boolean
+  /** Per-command timeout for shell_environment inspection (default 3000 ms). */
+  environmentProbeTimeoutMs?: number
+  /** Maximum interpreter candidates checked by shell_environment (default 4). */
+  environmentMaxCandidates?: number
 }
 ```
 
-来源：[`packages/shell/tool-pwsh/src/index.ts:52`](../packages/shell/tool-pwsh/src/index.ts)
+来源：[`packages/shell/tool-pwsh/src/index.ts:53`](../packages/shell/tool-pwsh/src/index.ts)
 
 <a id="deepseek-aidsh-tool-pwsh-persistent"></a>
 

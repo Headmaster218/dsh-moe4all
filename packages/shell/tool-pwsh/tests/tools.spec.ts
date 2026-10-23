@@ -299,6 +299,38 @@ async function callUntilText(
   throw new Error(`tool output did not include ${JSON.stringify(expected)}; last text ${JSON.stringify(last === undefined ? '' : text(last))}`)
 }
 
+describe('shell_environment policy and lifecycle', () => {
+  it('uses session policy and trusted variables without escalation, even if extra fields request it', async () => {
+    const { ctx, bash } = await setupSandboxed()
+    try {
+      const agent = sandboxAgent('read-only')
+      const result = await call(ctx, 'shell_environment', { python_executable: './python.exe', sandbox_permissions: 'danger-full-access', justification: 'not supported here' }, agent)
+      expect(result.isError).toBe(false)
+      expect(bash.modes).toEqual(['read-only'])
+      expect(bash.requests[0]?.dshEnv).toMatchObject({ DSH_SESSION_ID: 'sandbox-session' })
+      expect(bash.requests[0]?.signal).toBe(testToolSignal)
+      expect(bash.requests[0]?.timeoutMs).toBe(3000)
+      expect(bash.requests[0]?.stdoutMaxBytes).toBe(16000)
+      expect(JSON.parse(text(result))).toMatchObject({ status: 'unavailable' })
+    } finally { await ctx.fiber.dispose() }
+  })
+
+  it('propagates cancellation rather than reporting an unavailable environment', async () => {
+    const { ctx, bash } = await setup()
+    try {
+      bash.handler = () => runResult('', { aborted: true })
+      const result = await call(ctx, 'shell_environment', {})
+      expect(result.isError).toBe(true)
+      expect(text(result)).toContain('aborted')
+    } finally { await ctx.fiber.dispose() }
+  })
+
+  it('rejects invalid configured probe budgets', async () => {
+    await expect(setup({ environmentProbeTimeoutMs: 0 })).rejects.toThrow('environmentProbeTimeoutMs')
+    await expect(setup({ environmentMaxCandidates: 1.5 })).rejects.toThrow('environmentMaxCandidates')
+  })
+})
+
 describe('registration', () => {
   it('registers the pwsh tool with its prompt section and schema', async () => {
     const { ctx } = await setup()
@@ -335,7 +367,7 @@ describe('registration', () => {
     await ctx.plugin(BashEnvPlugin)
     await ctx.plugin(FakeBash)
     const fiber = await ctx.plugin(ToolPwsh)
-    expect(ctx.tools.schemas()).toHaveLength(1)
+    expect(ctx.tools.schemas()).toHaveLength(2)
     await fiber.dispose()
     expect(ctx.tools.schemas()).toHaveLength(0)
   })

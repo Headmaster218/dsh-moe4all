@@ -74,6 +74,19 @@ describe.skipIf(!hasPwsh)('pwsh tool over the real pwsh executor', () => {
 
   const agent = () => ({ session: { header: { id: 'session-int', cwd: dir } } })
 
+  it.skipIf(!process.env.DSH_TEST_PYTHON)('inspects an explicit real interpreter without importing a project module or substituting PATH', async () => {
+    await writeFile(join(dir, 'json.py'), "raise RuntimeError('project module must not be imported by inspection')\n")
+    const result = await call('shell_environment', { python_executable: process.env.DSH_TEST_PYTHON }, agent())
+    expect(result.isError).toBe(false)
+    const facts = JSON.parse(text(result))
+    expect(facts).toMatchObject({ status: 'inspected', languageMode: 'FullLanguage', candidatesOmitted: 0,
+      python: [{ source: 'explicit', startup: 'ok', exitCode: 0 }] })
+    expect(facts.python).toHaveLength(1)
+    expect(facts.python[0].version[0]).toBe(3)
+    const failure = await call('shell_environment', { python_executable: './missing-python-for-inspection' }, agent())
+    expect(JSON.parse(text(failure))).toMatchObject({ status: 'inspected', python: [{ source: 'explicit', startup: 'failed' }] })
+  })
+
   it('runs a command and returns stdout with no marker on a clean exit', async () => {
     const result = await call('pwsh', { command: 'Write-Output hi', description: 'say hi' }, agent())
     expect(result.isError).toBe(false)

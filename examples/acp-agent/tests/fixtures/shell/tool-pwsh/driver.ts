@@ -32,6 +32,12 @@ try {
     name: 'pwsh',
     arguments: { command: 'Write-Output "$env:PYTHONUTF8/$env:PYTHONIOENCODING"', description: 'Python encoding defaults' },
   })
+  const environment = await ctx.tools.execute({
+    signal: new AbortController().signal,
+    callId: CallId('loader-environment'),
+    name: 'shell_environment',
+    arguments: { python_executable: './intentionally-missing-python-for-loader-test' },
+  })
 
   const background = await ctx.tools.execute({
     signal: new AbortController().signal,
@@ -67,6 +73,7 @@ try {
     // Normalize PowerShell's platform line endings (CRLF on Windows, LF elsewhere).
     foregroundText: foregroundText.replace(/\r\n/g, '\n'),
     foregroundMeta: foreground.meta,
+    environmentText: environment.content.filter(block => block.type === 'text').map(block => block.text).join(''),
     encodingText: encoding.content.filter(block => block.type === 'text').map(block => block.text).join('').replace(/\r\n/g, '\n'),
     backgroundText: backgroundText.replace(/\r\n/g, '\n'),
   }))
