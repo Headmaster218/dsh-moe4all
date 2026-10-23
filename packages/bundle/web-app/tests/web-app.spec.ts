@@ -95,6 +95,33 @@ interface BashContribution {
 }
 
 describe('web-app runtime glue', () => {
+  it('keeps GUI orientation without checkout or HMR instructions in packaged task mode', async () => {
+    stageDist()
+    const ctx = new Context()
+    ctx.provide('webServer', fakeHttpServer().server)
+    const contributions: BashContribution[] = []
+    ctx.provide('shellEnv', {
+      register: (contribution: BashContribution) => {
+        contributions.push(contribution)
+        return () => {}
+      },
+    } as never)
+    apply(ctx, new Config({ openBrowser: false, printUrl: false, surfaceContext: true, developmentContext: false }))
+    await ctx.plugin(SystemPrompt, { persona: '' })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    try {
+      const assembly = await ctx.systemPrompt.assemble()
+      expect(assembly.sections.some(section => section.name === 'harness:source')).toBe(false)
+      const section = assembly.sections.find(section => section.name === 'app:web-surface')
+      expect(section?.text).toContain('http://127.0.0.1:4567')
+      expect(section?.text).toContain('no implicit DOM, route, or screenshot context')
+      expect(section?.text).not.toMatch(/HMR|dev:web|__DSH_BOOT__|rebuild|checkout/)
+      expect(contributions[0]?.resolve()).toEqual({ DSH_WEB_URL: 'http://127.0.0.1:4567' })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('mounts dist serving, prompt section, bash variables, and publishes the URL with the LAN snapshot', async () => {
     stageDist()
     const ctx = new Context()

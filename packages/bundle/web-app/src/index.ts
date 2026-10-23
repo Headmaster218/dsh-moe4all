@@ -51,6 +51,8 @@ export interface Config {
    * orientation text would be false.
    */
   surfaceContext: boolean
+  /** Include Harness checkout and Web rebuild instructions; disable in packaged task deployments. */
+  developmentContext?: boolean
   /** Explicit `--trusted-host` authorities from this invocation. */
   trustedHosts: string[]
 }
@@ -59,6 +61,7 @@ export const Config: z<Config> = z.object({
   openBrowser: z.boolean().default(true),
   printUrl: z.boolean().default(true),
   surfaceContext: z.boolean().default(true),
+  developmentContext: z.boolean().default(true),
   trustedHosts: z.array(String).default([]),
 })
 
@@ -139,7 +142,7 @@ export function resolveLanTrust(bindHost: string, extra: readonly string[]): Web
 }
 
 /** Model-visible orientation and acceptance boundary for sessions created through `dsh web`. */
-function webSurfacePrompt(webUrl: string): string {
+function webSurfacePrompt(webUrl: string, developmentContext: boolean): string {
   const productName = process.env.MOE4ALL_AGENT === '1' ? 'MoE4All' : 'DeepSeek Harness'
   const updateContract = 'The client-plugin HMR receiver is active, but client-plugin changes reload without a refresh only while '
     + '`pnpm run dev:web` is also running from this same checkout to rebuild their bundles; verify that watcher before promising automatic updates. '
@@ -147,9 +150,9 @@ function webSurfacePrompt(webUrl: string): string {
   return `You are interacting with the user through the ${productName} Web GUI at ${webUrl}. `
     + 'When the user refers to "this page", "this GUI", or "this app" without naming another target, they mean this GUI. '
     + 'The browser provides no implicit DOM, route, or screenshot context. '
-    + updateContract
+    + (developmentContext ? updateContract : '')
     + 'Starting another server does not update this GUI. '
-    + 'The apps/web Vite entry builds the shell but is not a standalone application because only dsh web injects window.__DSH_BOOT__. '
+    + (developmentContext ? 'The apps/web Vite entry builds the shell but is not a standalone application because only dsh web injects window.__DSH_BOOT__. ' : '')
     + 'Do not start a replacement server unless the user asks; if one is needed, use a managed background job and verify its exact URL.'
 }
 
@@ -234,11 +237,11 @@ export function apply(ctx: Context, config: Config): void {
   ctx.plugin(FrontendStatic, { distIndex: internals.resolveDistIndex() })
   if (config.surfaceContext) {
     ctx.inject(['systemPrompt'], (promptCtx) => {
-      addHarnessSourceSection(promptCtx, SOURCE_ROOT)
+      if (config.developmentContext !== false) addHarnessSourceSection(promptCtx, SOURCE_ROOT)
       promptCtx.systemPrompt.section({
         name: 'app:web-surface',
         order: -98,
-        text: () => webSurfacePrompt(localWebUrl(promptCtx)),
+        text: () => webSurfacePrompt(localWebUrl(promptCtx), config.developmentContext !== false),
       })
     })
     ctx.inject(['shellEnv'], (runtimeCtx) => {

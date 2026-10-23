@@ -802,6 +802,10 @@ export interface Config {
 ```ts config-catalog
 /** Gateway plugin configuration. */
 export interface Config {
+  /** Maximum bytes accepted by a user upload or preview. */
+  workspaceFileMaxBytes?: number
+  /** Maximum visible children in one workspace directory. */
+  workspaceFileMaxEntries?: number
   /**
    * Whether this deployment can hand paths to a native desktop opener —
    * the `hasDocument` capability the agent-preset roster reports. Absent,
@@ -825,7 +829,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/host/apiproxy/src/index.ts:41`](../packages/host/apiproxy/src/index.ts)
+来源：[`packages/host/apiproxy/src/index.ts:42`](../packages/host/apiproxy/src/index.ts)
 
 <a id="deepseek-aidsh-host-directory-picker-browse"></a>
 
@@ -1567,7 +1571,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/shell/pwsh-local/src/index.ts:58`](../packages/shell/pwsh-local/src/index.ts)
+来源：[`packages/shell/pwsh-local/src/index.ts:60`](../packages/shell/pwsh-local/src/index.ts)
 
 <a id="deepseek-aidsh-pwsh-sandbox"></a>
 
@@ -2536,14 +2540,16 @@ export interface Config {
   backendType?: string
   /** Wall-clock limit for one command (default 300000). */
   timeoutMs?: number
-  /** Maximum returned command-output characters before clipping (default 16000). */
+  /** Maximum returned command-output bytes before clipping (default 4000). */
+  maxOutputBytes?: number
+  /** Deprecated character cap retained as a configuration compatibility alias. */
   maxOutputChars?: number
   /** Model-facing tool description; deployments may describe their environment. */
   description?: string
 }
 ```
 
-来源：[`packages/shell/tool-bash-persistent/src/index.ts:432`](../packages/shell/tool-bash-persistent/src/index.ts)
+来源：[`packages/shell/tool-bash-persistent/src/index.ts:443`](../packages/shell/tool-bash-persistent/src/index.ts)
 
 <a id="deepseek-aidsh-tool-fs"></a>
 
@@ -2701,14 +2707,16 @@ export interface Config {
   backendType?: string
   /** Wall-clock limit for one command (default 300000). */
   timeoutMs?: number
-  /** Maximum returned command-output characters before clipping (default 16000). */
+  /** Maximum returned command-output bytes before clipping (default 4000). */
+  maxOutputBytes?: number
+  /** Deprecated character cap retained as a configuration compatibility alias. */
   maxOutputChars?: number
   /** Model-facing tool description; deployments may describe their environment. */
   description?: string
 }
 ```
 
-来源：[`packages/shell/tool-pwsh-persistent/src/index.ts:472`](../packages/shell/tool-pwsh-persistent/src/index.ts)
+来源：[`packages/shell/tool-pwsh-persistent/src/index.ts:483`](../packages/shell/tool-pwsh-persistent/src/index.ts)
 
 <a id="deepseek-aidsh-tool-ralph"></a>
 
@@ -3081,6 +3089,8 @@ export interface Config {
    * orientation text would be false.
    */
   surfaceContext: boolean
+  /** Include Harness checkout and Web rebuild instructions; disable in packaged task deployments. */
+  developmentContext?: boolean
   /** Explicit `--trusted-host` authorities from this invocation. */
   trustedHosts: string[]
 }
