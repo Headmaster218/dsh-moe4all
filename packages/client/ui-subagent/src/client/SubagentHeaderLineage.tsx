@@ -832,7 +832,7 @@ export function SubagentHeaderLineage({
   return (
     <>
       <CatalogDropdown
-        key={lineageSessionId}
+        key={`switcher:${lineageSessionId}`}
         rootSessionId={parentId}
         currentSessionId={lineageSessionId}
         variant="switcher"

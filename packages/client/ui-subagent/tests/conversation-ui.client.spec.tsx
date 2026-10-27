@@ -641,6 +641,7 @@ describe('SubagentHeaderLineage', () => {
   })
 
   it('combines the current subagent title and chevron into the parent-catalog trigger', () => {
+    const errors = vi.spyOn(console, 'error')
     const sibling = 'child-2' as SessionId
     const input = {
       ...props(catalog(), {}, {
@@ -675,6 +676,7 @@ describe('SubagentHeaderLineage', () => {
     expect(input.openChild).toHaveBeenCalledWith({
       parentSessionId: PARENT, childSessionId: sibling, mode: 'one-shot',
     })
+    expect(errors).not.toHaveBeenCalled()
   })
 
   it('falls back to the catalog session id when the selected row has no label', () => {
