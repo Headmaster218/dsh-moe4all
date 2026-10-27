@@ -1,4 +1,8 @@
 .dialog { width:min(780px,100%); max-height:calc(100dvh - 48px); border-radius:8px; }
+.dialog {
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
 .content { display:flex; flex-direction:column; min-height:0; gap:12px; overflow:auto; color:var(--dsw-alias-label-primary); }
 .navigation { display:flex; gap:8px; min-width:0; }
 .navigation input,.navigation select { min-width:0; border:1px solid var(--dsw-alias-border-l1); border-radius:6px; background:var(--dsw-alias-bg-layer-2); color:var(--dsw-alias-label-primary); padding:7px 9px; font:inherit; }

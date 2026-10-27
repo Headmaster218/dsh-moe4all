@@ -22,6 +22,10 @@
 .iconWrap { display:inline-flex; min-width:0; }
 .list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; padding:0; margin:0; list-style:none; }
 .item { display:flex; flex-direction:column; min-width:0; padding:16px; border:1px solid var(--dsw-alias-border-l1); border-radius:8px; background:var(--dsw-alias-bg-layer-2); }
+.item {
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
 .item[data-attention] { border-color:var(--dsw-alias-label-secondary); }
 .group { display:flex; align-items:center; gap:6px; margin:0 0 10px; color:var(--dsw-alias-label-secondary); font-size:11px; line-height:16px; }
 .group svg { flex:none; }
