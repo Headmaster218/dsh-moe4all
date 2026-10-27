@@ -190,6 +190,7 @@ export function CapabilitiesSection({ useDesktop, controller, t }: Props) {
 
 /** New-version notifications navigate the Settings-owned page; no second dialog is mounted. */
 export function CapabilitiesNotification({ useDesktop, controller, openSection }: Props & PropsRuntime<'settings.notification'>) {
+  useEffect(() => { controller.reportViewReady() }, [controller])
   const open = useDesktop(value => value.open && !value.picker)
   useEffect(() => {
     if (!open) return

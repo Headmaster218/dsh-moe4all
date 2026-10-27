@@ -21,7 +21,7 @@ export interface DesktopState {
   picker?: PickerSnapshot | null
 }
 
-type DesktopCommand = 'status' | 'check' | 'install' | 'release' | 'browser'
+type DesktopCommand = 'status' | 'view-ready' | 'check' | 'install' | 'release' | 'browser'
 export type DesktopBridge = {
   postMessage(value: unknown): void
   addEventListener(type: 'message', listener: (event: MessageEvent<unknown>) => void): void
@@ -38,6 +38,7 @@ export function desktopBridge(): DesktopBridge | undefined {
 export class DesktopController {
   readonly store = createSnapshotStore<DesktopState>({ phase: 'idle', installedVersion: '', version: '', completed: 0, total: 0, message: '', open: false })
   private lastCapabilities = ''
+  private viewReported = false
   private readonly receive = (event: MessageEvent<unknown>): void => {
     const value = event.data
     if (typeof value !== 'object' || value === null) return
@@ -80,6 +81,13 @@ export class DesktopController {
   }
 
   private readonly notified = new Set<string>()
+
+  /** Report a committed React view, not merely a constructed message bridge. */
+  reportViewReady(): void {
+    if (this.viewReported) return
+    this.viewReported = true
+    this.send('view-ready')
+  }
 
   private notifyUpdates(): void {
     const state = this.store.getSnapshot(), snapshot = state.capabilities

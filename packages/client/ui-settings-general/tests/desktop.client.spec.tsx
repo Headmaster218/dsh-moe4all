@@ -45,6 +45,17 @@ it('rejects malformed native snapshots and never installs on notification', () =
   expect(f.bridge.postMessage).toHaveBeenCalledTimes(2)
 })
 
+it('reports the committed view once, separately from bridge construction', () => {
+  const f = fixture()
+  expect(f.bridge.postMessage).not.toHaveBeenCalledWith({ type: 'moe4all-desktop-command', command: 'view-ready' })
+  const view = render(<CapabilitiesNotification {...f.props} />)
+  expect(f.bridge.postMessage).toHaveBeenLastCalledWith({ type: 'moe4all-desktop-command', command: 'view-ready' })
+  view.unmount()
+  render(<CapabilitiesNotification {...f.props} />)
+  expect(f.bridge.postMessage.mock.calls.filter(([value]) => value.command === 'view-ready')).toHaveLength(1)
+  f.controller.dispose()
+})
+
 it('uses the Settings section and requires a second explicit download confirmation', () => {
   const f = fixture()
   render(<CapabilitiesSection {...f.props} />)
