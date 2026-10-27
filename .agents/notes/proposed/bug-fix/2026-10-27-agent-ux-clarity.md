@@ -1,5 +1,7 @@
 # Agent Note: Bounded workspace discovery and explicit file and protocol actions
 
+English | [中文](2026-10-27-agent-ux-clarity.zh.md)
+
 Status: proposed
 
 ## Problem
@@ -20,7 +22,7 @@ Prompt-only requests cannot provide a shallow directory operation. Recursive glo
 
 ## Acceptance criteria
 
-Run the added unit and real-Loader regressions, refresh generated tool/config catalogs and affected transcript snapshots, and validate the assembled client. Preserve unknown-link rejection, streaming safety, route identity and credential isolation. Tests, builds and generators are deliberately not executed while the user needs CPU and memory; the draft is not release-ready.
+Validation includes unit and real-Loader regressions, generated tool/config catalogs, affected transcript snapshots and the assembled client. Unknown-link rejection, streaming safety, route identity and credential isolation remain required. Focused source tests do not substitute for complete runtime acceptance.
 
 ## Risks
 

@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/proposed/bug-fix/2026-10-27-agent-ux-clarity.md
+2026-10-27-agent-ux-clarity.md: 48e5218a9fde4256c90b0e97ce1cdef217e901b9
+2026-10-27-agent-ux-clarity.zh.md: 6f82fb5b987ee7cf99662cfdaf4d3296363216a8
