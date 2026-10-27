@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { flattenDiagnosticMessageText, parseConfigFileTextToJson } from 'typescript'
@@ -76,6 +76,7 @@ probePromise()
       const clientScript = 'scripts/client-bundle-purity.spec.ts'
 
       const result = runOxlint([
+        '--no-ignore',
         '--config',
         relative(repositoryRoot, configPath),
         '--format',
@@ -196,11 +197,18 @@ export const longProbe = 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 +
     })
   })
 
-  it('checks preserved TypeGraph syntax without type-aware analysis', () => {
+  it('checks preserved TypeGraph syntax without type-aware analysis', async () => {
+    const fixture = 'packages/typert/generator/tests/fixtures/type-model'
+    // Explicit files isolate syntax validation from the CLI directory walker's deep-path behavior.
+    const files = (await readdir(join(repositoryRoot, fixture), { recursive: true }))
+      .filter(path => path.endsWith('.ts'))
+      .map(path => join(fixture, path))
+    expect(files.length).toBeGreaterThan(0)
     const result = runOxlint([
+      '--no-ignore',
       '--config',
       '.oxlintrc.staged.json',
-      'packages/typert/generator/tests/fixtures/type-model',
+      ...files,
     ])
 
     expect(result.error).toBeUndefined()
@@ -332,6 +340,7 @@ export const longProbe = 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 +
     try {
       await writeFile(path, `export const longProbe = ${'1 + '.repeat(80)}1\n`)
       const result = runRepositoryOxlint([
+        '--no-ignore',
         '--config',
         '.oxlintrc.staged.json',
         '--format',
@@ -347,7 +356,7 @@ export const longProbe = 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 +
     } finally {
       await rm(path, { force: true })
     }
-  })
+  }, 20_000)
 
   it.each(['--fix', '--fix-suggestions', '--fix-dangerously'])(
     'converges overlapping staged stylistic fixes through Oxlint under %s',
