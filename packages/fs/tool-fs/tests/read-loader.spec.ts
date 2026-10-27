@@ -20,6 +20,10 @@ it('replays complete long-line content and rejects stale continuation tokens', a
   expect(report).toMatchInlineSnapshot(`
     {
       "completeAtEnd": true,
+      "directoryEntries": [
+        "file:a.txt",
+        "directory:src",
+      ],
       "firstIncomplete": true,
       "fragments": [
         "0123",

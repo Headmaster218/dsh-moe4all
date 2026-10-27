@@ -16,12 +16,20 @@ await ctx.plugin(ToolFs)                                  // this package — re
 
 `read_image` registers only while a durable `ctx.attachments` service is mounted. Execution additionally requires the exact routed model to declare `image` input, resolved through `ctx.llm.resolveModelInfo` from the session's latest request header and then from agent options.
 
+## Directory overview
+
+`list_directory` lists direct children only, without opening file contents or recursively traversing the workspace. Its optional `path` defaults to the calling session's workspace, `offset` starts at zero, and `limit` is bounded by `listLimit` (default 100). Results contain `path`, `offset`, `entries` (`name` and `type`), `totalEntries`, and an optional `nextOffset`. Copy that offset for another page. The serialized result is capped by `listMaxBytes` (default 16384 UTF-8 bytes); an entry that cannot fit fails with `FS_TOO_LARGE` rather than returning a partial name. Listing uses the existing filesystem provider and does not count as reading a file for mutation authorization. The provider still enumerates all direct children before result pagination; directory changes between calls may shift page offsets.
+
+The model-facing guidance asks for a shallow overview before reading relevant project files and searching selected subdirectories. Existing recursive `glob` semantics remain unchanged.
+
 ## Config
 
-All keys are optional; the defaults are the shipped read caps.
+All keys are optional; defaults bound directory results and file reads.
 
 | Key | Default | Meaning |
 |---|---|---|
+| `listLimit` | `100` | Default and maximum entries in one shallow directory page. |
+| `listMaxBytes` | `16384` | Maximum UTF-8 bytes in the serialized directory result. |
 | `readLimit` | `2000` | Default and maximum lines returned by one `read` call (the tool schema advertises it as the `limit` default). |
 | `readMaxLineLength` | `2000` | Characters kept per line before truncation (the suffix names the cap). |
 | `readMaxBytes` | `51200` | Byte cap on one `read` call's selected lines; overflow ends the window with a "capped" footer. |
@@ -31,6 +39,7 @@ All keys are optional; the defaults are the shipped read caps.
 
 | Tool | Arguments | Behavior |
 |---|---|---|
+| `list_directory` | `path?`, `offset?`, `limit?` | Direct-child metadata only; no recursion or file-content reads. Copy `nextOffset` for another page. |
 | `read` | `file_path`, `offset?`, `limit?`, `continuation?` | Line-numbered UTF-8 content with a pagination footer. `offset` is 1-based; `limit` defaults to and caps at the configured `readLimit` (2000). A clipped result supplies an opaque continuation; copy it with the same file_path and omit offset. |
 | `read_image` | `file_path` | Reads a PNG/JPEG/WebP/GIF file through the bounded byte seam, persists it through `ctx.attachments.saveImage`, and returns an image block beside a small metadata envelope. Harness validates and downscales large supported images before the next model request, so the model can read the source directly without first creating a thumbnail. It succeeds only when the exact routed model declares image input. |
 | `write` | `file_path`, `content` | Create or fully replace a file. With the policy plugin: overwriting an existing file requires a prior `read` at the unchanged version; creating a new file does not. Without it: unconditional. |

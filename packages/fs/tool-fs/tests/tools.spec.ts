@@ -37,6 +37,7 @@ const testToolSignal = new AbortController().signal
 /** An in-memory fake provider; a test can arm a rejection on any primitive. */
 class FakeFs extends FileSystem {
   files = new Map<string, string>()
+  directoryEntries: FsDirEntry[] = []
   rejectWith?: FsError
   writeIntents: (FsWriteIntent | undefined)[] = []
   editIntents: ({ version: FsVersion } | undefined)[] = []
@@ -79,7 +80,8 @@ class FakeFs extends FileSystem {
     return bytes
   }
   override async listDir(_target: FsTarget): Promise<FsDirEntry[]> {
-    return []
+    this.throwIfArmed()
+    return this.directoryEntries
   }
   override async writeText(target: FsTarget, content: string, expected?: FsWriteIntent): Promise<FsWriteOutcome> {
     this.throwIfArmed()
@@ -98,13 +100,13 @@ class FakeFs extends FileSystem {
   }
 }
 
-async function setup() {
+async function setup(config: ToolFs.Config = {}) {
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(FakeFs)
   await ctx.plugin(FsPolicy)
-  await ctx.plugin(ToolFs)
+  await ctx.plugin(ToolFs, config)
   const fs = ctx.fs as FakeFs
   return { ctx, fs }
 }
@@ -153,7 +155,7 @@ describe('session cwd resolution', () => {
 describe('registration', () => {
   it('registers read, write, and edit', async () => {
     const { ctx } = await setup()
-    expect(ctx.tools.schemas().map(s => s.name).sort()).toEqual(['edit', 'read', 'write'])
+    expect(ctx.tools.schemas().map(s => s.name).sort()).toEqual(['edit', 'list_directory', 'read', 'write'])
   })
 
   it('declares read parallel-safe while write/edit remain exclusive', async () => {
@@ -191,9 +193,9 @@ describe('registration', () => {
     const fiber = await ctx.plugin(ToolFs)
     // Each tool contributes BOTH a schema and a prompt section; disposal must
     // withdraw both, not just the schemas.
-    expect(ctx.tools.schemas()).toHaveLength(3)
+    expect(ctx.tools.schemas()).toHaveLength(4)
     const sectionNames = (a: { sections: { name: string }[] }) => a.sections.map(s => s.name).sort()
-    expect(sectionNames(await ctx.systemPrompt.assemble())).toEqual(['deployment:persona', 'harness:identity', 'tool:edit', 'tool:read', 'tool:write'])
+    expect(sectionNames(await ctx.systemPrompt.assemble())).toEqual(['deployment:persona', 'harness:identity', 'tool:edit', 'tool:list_directory', 'tool:read', 'tool:write'])
     await fiber.dispose()
     expect(ctx.tools.schemas()).toHaveLength(0)
     // Only the system-prompt plugin's own built-in sections remain.
@@ -732,6 +734,60 @@ describe('result-time contextual diff (meta + presentResult)', () => {
     const badMeta = { content: [{ type: 'text' as const, text: 'ok' }], isError: false, meta: { diffs: 'nope' } }
     const view = ctx.tools.get('write')?.presentResult?.({ file_path: 'a.txt', content: 'y' }, badMeta)
     expect(view).toEqual({ card: 'diff', title: 'Write a.txt', diffs: [{ path: 'a.txt', oldText: null, newText: 'y' }] })
+  })
+})
+
+describe('shallow directory overview', () => {
+  const entry = (name: string, type: FsDirEntry['type'] = 'file'): FsDirEntry => ({
+    name, type, target: { targetKey: FsTargetKey(`key:${name}`), displayPath: `/abs/${name}` },
+  })
+
+  it('lists only direct children, pages results and never reads file content', async () => {
+    const { ctx, fs } = await setup({ listLimit: 2 })
+    fs.directoryEntries = [entry('.git', 'directory'), entry('README.md'), entry('src', 'directory')]
+    const listing = vi.spyOn(fs, 'listDir')
+    const read = vi.spyOn(fs, 'readText')
+    const first = await call(ctx, 'list_directory', {})
+    expect(first.isError).not.toBe(true)
+    expect(JSON.parse(text(first))).toEqual({
+      path: '/abs/.', offset: 0, entries: [{ name: '.git', type: 'directory' }, { name: 'README.md', type: 'file' }],
+      totalEntries: 3, nextOffset: 2,
+    })
+    const last = await call(ctx, 'list_directory', { offset: 2 })
+    expect(JSON.parse(text(last))).toEqual({
+      path: '/abs/.', offset: 2, entries: [{ name: 'src', type: 'directory' }], totalEntries: 3,
+    })
+    expect(listing).toHaveBeenCalledTimes(2)
+    expect(read).not.toHaveBeenCalled()
+  })
+
+  it('resolves the requested directory against the session workspace', async () => {
+    const { ctx, fs } = await setup()
+    const resolve = vi.spyOn(fs, 'resolve')
+    await call(ctx, 'list_directory', { path: 'src' }, { session: { header: { cwd: process.cwd() } } })
+    expect(resolve).toHaveBeenCalledWith('src', { cwd: process.cwd(), signal: testToolSignal })
+  })
+
+  it('caps serialized UTF-8 bytes without returning a partial filename', async () => {
+    const { ctx, fs } = await setup({ listMaxBytes: 512 })
+    fs.directoryEntries = [entry('x'.repeat(250)), entry('y'.repeat(250))]
+    const result = await call(ctx, 'list_directory', {})
+    expect(result.isError).not.toBe(true)
+    expect(Buffer.byteLength(text(result))).toBeLessThanOrEqual(512)
+    expect(JSON.parse(text(result))).toMatchObject({ entries: [{ name: 'x'.repeat(250), type: 'file' }], nextOffset: 1 })
+    fs.directoryEntries = [entry('x'.repeat(600))]
+    expect((await call(ctx, 'list_directory', {})).isError).toBe(true)
+  })
+
+  it('returns provider errors and rejects invalid pagination without listing', async () => {
+    const { ctx, fs } = await setup({ listLimit: 2 })
+    const listing = vi.spyOn(fs, 'listDir')
+    for (const args of [{ path: ' ' }, { offset: -1 }, { offset: 0.5 }, { limit: 0 }, { limit: 3 }]) {
+      expect((await call(ctx, 'list_directory', args)).isError).toBe(true)
+    }
+    expect(listing).not.toHaveBeenCalled()
+    fs.rejectWith = new FsError('cannot list', 'FS_NOT_DIRECTORY')
+    expect(text(await call(ctx, 'list_directory', {}))).toContain('cannot list')
   })
 })
 

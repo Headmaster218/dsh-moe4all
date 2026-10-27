@@ -1,5 +1,5 @@
 /**
- * Model-facing read, read_image, write, and edit tools over `ctx.fs`. This package owns schemas, validation,
+ * Model-facing list_directory, read, read_image, write, and edit tools over `ctx.fs`. This package owns schemas, validation,
  * read windows, formatting, and observation events, never a concrete provider. An optional
  * event policy supplies mutation guards; without one the tools use unconditional provider calls.
  * @module @deepseek-ai/dsh-tool-fs
@@ -12,6 +12,7 @@ import { applyReadTool, READ_LIMIT, STREAM_MIN_SIZE } from './read.ts'
 import { applyWriteTool } from './write.ts'
 import { applyEditTool } from './edit.ts'
 import { applyReadImageTool } from './read-image.ts'
+import { applyListDirectoryTool } from './list-directory.ts'
 import { READ_MAX_BYTES, READ_MAX_LINE_LENGTH } from './read-render.ts'
 import { FsSandboxController } from './sandbox.ts'
 
@@ -23,6 +24,10 @@ export const inject = ['tools', 'fs', 'systemPrompt']
 
 /** Plugin config (all optional — `Config` supplies the defaults). */
 export interface Config {
+  /** Default and maximum direct children returned by list_directory. */
+  listLimit?: number
+  /** Maximum UTF-8 bytes in a list_directory result. */
+  listMaxBytes?: number
   /** Default and maximum number of lines returned by one `read` call. */
   readLimit?: number
   /** Maximum characters returned for a single line before truncation. */
@@ -34,6 +39,8 @@ export interface Config {
 }
 
 export const Config: z<Config> = z.object({
+  listLimit: z.number().default(100),
+  listMaxBytes: z.number().default(16384),
   readLimit: z.number().default(READ_LIMIT),
   readMaxLineLength: z.number().default(READ_MAX_LINE_LENGTH),
   readMaxBytes: z.number().default(READ_MAX_BYTES),
@@ -50,14 +57,17 @@ function assertPositiveInteger(name: string, value: number): void {
   }
 }
 
-/** Register the full `read`/`write`/`edit` filesystem tool suite, plus `read_image` while `attachments` is mounted. */
+/** Register `list_directory`, `read`, `write`, `edit`, and conditional `read_image` tools. */
 export function apply(ctx: Context, config: Config): void {
   // schemastery (Config) has already filled every defaulted field.
   const resolved = config as ResolvedConfig
+  assertPositiveInteger('listLimit', resolved.listLimit)
+  assertPositiveInteger('listMaxBytes', resolved.listMaxBytes)
   assertPositiveInteger('readLimit', resolved.readLimit)
   assertPositiveInteger('readMaxLineLength', resolved.readMaxLineLength)
   assertPositiveInteger('readMaxBytes', resolved.readMaxBytes)
   assertPositiveInteger('readStreamMinSize', resolved.readStreamMinSize)
+  applyListDirectoryTool(ctx, { limit: resolved.listLimit, maxBytes: resolved.listMaxBytes })
   applyReadTool(ctx, {
     limit: resolved.readLimit,
     maxLineLength: resolved.readMaxLineLength,

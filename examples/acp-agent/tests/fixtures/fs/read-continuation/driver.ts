@@ -1,5 +1,5 @@
 /** Real Loader read-continuation fixture; writes only in the caller's isolated cwd. */
-import { writeFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { boot, resolveConfigPath } from '@deepseek-ai/dsh-app-boot'
 import { CallId } from '@deepseek-ai/dsh-llm'
 
@@ -8,6 +8,21 @@ if (config === undefined) throw new Error('read-continuation requires a config p
 await writeFile('long.txt', '0123456789\n\u540E\u7EED', 'utf8')
 const ctx = await boot('read-continuation', resolveConfigPath(config, undefined))
 try {
+  await mkdir('overview/src', { recursive: true })
+  await writeFile('overview/a.txt', 'root', 'utf8')
+  await writeFile('overview/src/nested.txt', 'not listed', 'utf8')
+  const directoryEntries: string[] = []
+  for (const offset of [0, 1]) {
+    const listing = await ctx.tools.execute({
+      signal: new AbortController().signal, callId: CallId(`list-${offset}`), name: 'list_directory',
+      arguments: { path: 'overview', offset },
+    })
+    if (listing.isError) throw new Error(JSON.stringify(listing.error))
+    const page = listing.value as { entries: { name: string; type: string }[]; nextOffset?: number }
+    for (const entry of page.entries) directoryEntries.push(`${entry.type}:${entry.name}`)
+    if (offset === 0 && page.nextOffset !== 1) throw new Error('Missing next directory page')
+    if (offset === 1 && page.nextOffset !== undefined) throw new Error('Directory page did not finish')
+  }
   let continuation: string | undefined
   let firstToken: string | undefined
   let firstIncomplete = false
@@ -42,7 +57,7 @@ try {
     arguments: { file_path: 'long.txt', continuation: firstToken },
   })
   await writeFile('read-report.json', JSON.stringify({
-    fragments, lineNumbers, firstIncomplete, completeAtEnd,
+    fragments, lineNumbers, firstIncomplete, completeAtEnd, directoryEntries,
     staleRejected: stale.isError && stale.error.info?.code === 'FS_STALE_VERSION',
   }))
 } finally {

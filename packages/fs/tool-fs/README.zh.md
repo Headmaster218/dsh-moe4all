@@ -16,12 +16,20 @@ await ctx.plugin(ToolFs)                                  // this package — re
 
 `read_image` 只在持久 `ctx.attachments` 服务已挂载时注册。执行时还要求确切路由的模型声明 `image` 输入，通过 `ctx.llm.resolveModelInfo` 依次从会话最新请求 header 和 agent 选项解析。
 
+## 工作区概览
+
+`list_directory` 只列出直接子项，不读取文件正文，也不递归遍历工作区。可选 `path` 默认为调用会话的工作区，`offset` 从零开始，`limit` 不超过 `listLimit`（默认 100）。结果包含 `path`、`offset`、`entries`（`name` 和 `type`）、`totalEntries`，以及可选的 `nextOffset`；下一页直接复制该偏移。序列化结果受 `listMaxBytes` 限制（默认 16384 个 UTF-8 字节）；单项放不下时以 `FS_TOO_LARGE` 失败，不返回残缺文件名。目录概览使用现有文件系统提供方，不等同于读取文件，不为修改文件提供授权。提供方仍会先枚举该目录的全部直接子项，再对返回结果分页；目录在两次调用间变化时，分页位置可能移动。
+
+面向模型的指引要求先查看浅层目录，再读取相关项目文件并搜索选定子目录。现有递归 `glob` 的语义不变。
+
 ## 配置
 
-所有键均为可选；默认值是随产品交付的读取上限。
+所有键均为可选；默认值限制目录结果和文件读取大小。
 
 | 键 | 默认值 | 含义 |
 |---|---|---|
+| `listLimit` | `100` | 单页浅层目录结果的默认和最大条数。 |
+| `listMaxBytes` | `16384` | 序列化目录结果的 UTF-8 字节上限。 |
 | `readLimit` | `2000` | 一次 `read` 调用返回的默认和最大行数（工具 schema 将其声明为 `limit` 默认值）。 |
 | `readMaxLineLength` | `2000` | 每行截断前保留的字符数（后缀会说明上限）。 |
 | `readMaxBytes` | `51200` | 一次 `read` 调用所选行的字节上限；溢出时以「已达上限」footer 结束窗口。 |
@@ -31,6 +39,7 @@ await ctx.plugin(ToolFs)                                  // this package — re
 
 | 工具 | 参数 | 行为 |
 |---|---|---|
+| `list_directory` | `path?`、`offset?`、`limit?` | 只返回直接子项元数据，不递归、不读取文件正文。下一页复制 `nextOffset`。 |
 | `read` | `file_path`、`offset?`、`limit?`、`continuation?` | 带行号的 UTF-8 内容和分页 footer。`offset` 从 1 开始；`limit` 默认为配置的 `readLimit`（2000），上限也为该值。截断结果提供不透明的续读值；保持 file_path 不变复制该值，并省略 offset。 |
 | `read_image` | `file_path` | 通过有界字节 seam 读取 PNG/JPEG/WebP/GIF 文件，经 `ctx.attachments.saveImage` 持久保存，并在小型元数据信封旁返回图像块。Harness 会在下一次模型请求前校验并缩小受支持的大图，因此模型可以直接读取源文件，无需先创建缩略图。只有确切路由的模型声明图像输入时才会成功。 |
 | `write` | `file_path`、`content` | 创建文件或完整替换文件。有策略插件时：覆盖现有文件要求先在未变版本上执行 `read`；创建新文件不需要。没有插件时：无条件执行。 |
