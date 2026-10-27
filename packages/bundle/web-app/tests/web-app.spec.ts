@@ -106,7 +106,7 @@ describe('web-app runtime glue', () => {
         return () => {}
       },
     } as never)
-    apply(ctx, new Config({ openBrowser: false, printUrl: false, surfaceContext: true, developmentContext: false }))
+    apply(ctx, new Config({ openBrowser: false, printUrl: false, surfaceContext: true, developmentContext: false, trustedHosts: [] }))
     await ctx.plugin(SystemPrompt, { persona: '' })
     await new Promise(resolve => setTimeout(resolve, 0))
     try {
