@@ -749,12 +749,11 @@ describe('hand-declared providers', () => {
     expect(fields()).toEqual([en.customRoute, en.customDisplayName, en.baseUrl, en.customApi, en.keyInput])
     cleanup()
 
-    // A shipped route's models each carry their own protocol, so its editor
-    // offers no route-level protocol to override them with.
+    // A catalog route retains its preset unless the user explicitly overrides the protocol.
     await mountSection({ providers: { openai: { apiKeyEnv: 'OPENAI_API_KEY' } } })
     openEditor('openai')
     fireEvent.click(screen.getByText(en.customized))
-    expect(fields()).toEqual([en.keyInput, en.baseUrl])
+    expect(fields()).toEqual([en.keyInput, en.baseUrl, en.customApi])
     cleanup()
 
     // A hand-declared route named its own protocol at creation, so editing it
@@ -882,6 +881,28 @@ describe('hand-declared providers', () => {
       ops: [{ op: 'set', path: ['providers', 'acme-gateway', 'api'], value: 'anthropic-messages' }],
       expectedRevision: 3,
     })
+  })
+
+  it('overrides a catalog protocol without renaming the route or replacing credentials', async () => {
+    const { mutate, set } = await mountSection({ providers: { openai: { apiKeyEnv: 'OPENAI_API_KEY' } } })
+    openEditor('openai')
+    const protocol = screen.getByLabelText<HTMLSelectElement>(en.customApi)
+    expect(protocol.value).toBe('')
+    expect(screen.getByRole('option', { name: 'OpenAI Responses' })).toBeTruthy()
+    fireEvent.change(protocol, { target: { value: 'openai-responses' } })
+    fireEvent.click(screen.getByText(en.apply))
+    await waitFor(() => { expect(mutate).toHaveBeenCalledTimes(1) })
+    expect(firstMutate(mutate).ops).toEqual([{ op: 'set', path: ['providers', 'openai', 'api'], value: 'openai-responses' }])
+    expect(set).not.toHaveBeenCalled()
+  })
+
+  it('can restore a catalog protocol default by unsetting only the override', async () => {
+    const { mutate } = await mountSection({ providers: { openai: { api: 'openai-responses' } } })
+    openEditor('openai')
+    fireEvent.change(screen.getByLabelText(en.customApi), { target: { value: '' } })
+    fireEvent.click(screen.getByText(en.apply))
+    await waitFor(() => { expect(mutate).toHaveBeenCalledTimes(1) })
+    expect(firstMutate(mutate).ops).toEqual([{ op: 'unset', path: ['providers', 'openai', 'api'] }])
   })
 
   it('selects nothing for a declared route whose profile names no protocol', async () => {

@@ -27,6 +27,7 @@ import { validateDeepSeekModels } from './DeepSeekModelsEditor.tsx'
 import { ModelListEditor } from './ModelListEditor.tsx'
 import type { ModelDraft } from './ModelListEditor.tsx'
 import { deriveKeyRef, messageOf } from './store.ts'
+import { protocolEndpointPlaceholder, protocolLabel } from './protocol.ts'
 import type { en } from './locales.ts'
 import styles from './ModelsSection.module.css'
 
@@ -224,7 +225,7 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
           className={styles['input']}
           type="text"
           value={baseURL}
-          placeholder="https://gateway.example/v1"
+          placeholder={protocolEndpointPlaceholder(protocol)}
           aria-label={t('baseUrl')}
           disabled={profileDisabled}
           onChange={(event) => { setBaseURL(event.target.value) }}
@@ -239,7 +240,7 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
           disabled={profileDisabled}
           onChange={(event) => { setProtocol(event.target.value) }}
         >
-          {protocols.map(choice => <option key={choice} value={choice}>{choice}</option>)}
+          {protocols.map(choice => <option key={choice} value={choice}>{protocolLabel(choice)}</option>)}
         </select>
       </div>
       <div className={styles['field']}>
