@@ -118,6 +118,10 @@ export function readGitIndexBlob(root: string, path: string): GitIndexBlob | und
  * content hash before the caller writes a sidecar.
  */
 export function storeGitBlob(root: string, content: Buffer): string {
+  // A temporary non-repository directory must never discover and mutate an ancestor repo.
+  const prefix = runGit(root, ['rev-parse', '--show-prefix'], 'git hash-object -w --stdin')
+    .toString('utf8').trim()
+  if (prefix !== '') throw new Error('git hash-object -w --stdin failed: snapshot root is not the repository root')
   const expected = gitBlobHash(content)
   const stored = runGit(root, ['hash-object', '-w', '--stdin'], 'git hash-object -w --stdin', content)
     .toString('utf8')

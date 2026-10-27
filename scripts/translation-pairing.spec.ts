@@ -112,6 +112,21 @@ describe('translation pairing snapshots', () => {
     }
   })
 
+  it('rejects a nested non-repository directory without changing ancestor refs', () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-translation-parent-'))
+    try {
+      execFileSync('git', ['init', '--quiet', root], { env: { ...process.env, GIT_DEFAULT_HASH: 'sha1' } })
+      const nested = join(root, 'nested')
+      mkdirSync(nested)
+      const refs = () => execFileSync('git', ['-C', root, 'for-each-ref'], { encoding: 'utf8' })
+      const before = refs()
+      expect(() => storeGitBlob(nested, Buffer.from('snapshot'))).toThrow('snapshot root is not the repository root')
+      expect(refs()).toBe(before)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('reads staged bytes independently of the working tree', () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-translation-pairing-index-'))
     try {
