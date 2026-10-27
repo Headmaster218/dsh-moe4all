@@ -202,6 +202,13 @@ describe('FileSystemSkillProvider', () => {
 
     const noGit = await tempDir('skill-no-git')
     await writeSkill(join(noGit, '.dsh/skills'), 'fallback-root', 'Fallback root')
+    // Model an actually marker-free filesystem even when the host temp is inside a repository.
+    await ctx.plugin(TestFileSystem)
+    const noGitFs = ctx.fs as TestFileSystem
+    for (let directory = noGit; ; directory = dirname(directory)) {
+      noGitFs.statOverrides.set(join(directory, '.git'), undefined)
+      if (dirname(directory) === directory) break
+    }
     expect((await ctx.skills.list({ cwd: noGit })).map(skill => skill.name)).toContain('fallback-root')
   })
 

@@ -591,7 +591,8 @@ describe('workspace context instruction discovery', () => {
       await write(join(root, 'AGENTS.md'), 'parent without marker')
       await write(join(cwd, 'AGENTS.md'), 'cwd without marker')
 
-      const files = await discoverBaselineInstructionFiles({ cwd })
+      // A redirected test temp can live beneath a real repository; isolate the no-marker branch.
+      const files = await discoverBaselineInstructionFiles({ cwd, projectRootMarkers: [] })
 
       expect(files.map(file => file.displayPath)).toEqual(['AGENTS.md'])
       expect(files.map(file => file.absolutePath)).toEqual([join(cwd, 'AGENTS.md')])

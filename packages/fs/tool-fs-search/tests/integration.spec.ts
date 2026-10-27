@@ -163,6 +163,8 @@ describe('search tools over the real subprocess service + the packaged rg', () =
     it('resolves the search in the SESSION workspace, not the process cwd', async () => {
       const sessionDir = await mkdtemp(join(tmpdir(), 'dsh-search-session-'))
       try {
+        // This case exercises cwd routing, independent of ancestor ignore rules on the test host.
+        await writeFile(join(sessionDir, '.ignore'), '!**\n')
         await writeFile(join(sessionDir, 'only-here.ts'), 'const sessionFile = true\n')
         const agentObj = { session: { header: { id: 'session-int', cwd: sessionDir } } }
         const globbed = await call('glob', { pattern: '*.ts' }, agentObj)
