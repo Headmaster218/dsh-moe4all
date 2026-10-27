@@ -64,7 +64,14 @@ export class ModelDirectory {
     this.assertAvailable()
     const generation = ++this.generation
     this.store.update((s) => { s.status = 'loading'; s.error = null })
-    const { result } = await this.sessions.models({ sessionId: this.sessionId })
+    let reply: Awaited<ReturnType<IApiClient['sessions']['models']>>
+    try {
+      reply = await this.sessions.models({ sessionId: this.sessionId })
+    } catch (error) {
+      this.failTransport(generation, error)
+      throw error
+    }
+    const { result } = reply
     if (this.disposed || generation !== this.generation) {
       if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`)
       return result.value
@@ -95,14 +102,21 @@ export class ModelDirectory {
     this.assertAvailable()
     const generation = ++this.generation
     this.store.update((s) => { s.status = 'selecting'; s.error = null })
-    const { result } = await this.sessions.selectModel({
-      sessionId: this.sessionId,
-      provider: selection.provider,
-      model: selection.model,
-      ...selection.reasoningEffort === undefined
-        ? {}
-        : { reasoningEffort: selection.reasoningEffort },
-    })
+    let reply: Awaited<ReturnType<IApiClient['sessions']['selectModel']>>
+    try {
+      reply = await this.sessions.selectModel({
+        sessionId: this.sessionId,
+        provider: selection.provider,
+        model: selection.model,
+        ...selection.reasoningEffort === undefined
+          ? {}
+          : { reasoningEffort: selection.reasoningEffort },
+      })
+    } catch (error) {
+      this.failTransport(generation, error)
+      throw error
+    }
+    const { result } = reply
     if (this.disposed || generation !== this.generation) {
       if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`)
       return
@@ -144,6 +158,14 @@ export class ModelDirectory {
   /** Scope teardown: late settlements lose write access to the store. */
   dispose(): void {
     this.disposed = true
+  }
+
+  private failTransport(generation: number, error: unknown): void {
+    if (this.disposed || generation !== this.generation) return
+    this.store.update((s) => {
+      s.status = 'error'
+      s.error = error instanceof Error ? error.message : String(error)
+    })
   }
 
   private assertAvailable(): void {

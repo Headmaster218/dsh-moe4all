@@ -58,15 +58,18 @@ async function bench() {
   const ctx = new Context()
   let current: ModelSelection = { provider: 'deepseek-official', model: 'deepseek-v4-flash' }
   const calls = { models: 0, select: 0 }
+  const faults: { models?: Error; select?: Error } = {}
   ctx.provide('connection', { api: { sessions: {
     models: () => {
       calls.models += 1
+      if (faults.models) return Promise.reject(faults.models)
       return Promise.resolve({
         result: { ok: true as const, value: { current, routable, groups: GROUPS, failures: [] } },
       })
     },
     selectModel: (payload: { provider: string; model: string; reasoningEffort?: string }) => {
       calls.select += 1
+      if (faults.select) return Promise.reject(faults.select)
       current = {
         provider: payload.provider,
         model: payload.model,
@@ -128,7 +131,7 @@ async function bench() {
     return handle
   }
   return {
-    ctx, fiber, mint, calls,
+    ctx, fiber, mint, calls, faults,
     contribution: () => contribution!,
     seat: () => seats.get('conversation.input.model')!,
     hostCurrent: () => current,
@@ -142,6 +145,29 @@ async function bench() {
 const projection = (id: string) => ({ sessionId: sid(id) })
 
 describe('ui-model-selection dual entry', () => {
+  it('shows transport failures without discarding reasoning metadata and allows retry', async () => {
+    const b = await bench()
+    b.mint('transport')
+    const directory = b.ctx.modelDirectories.directoryFor(sid('transport'))
+    await directory.load()
+    const previous = directory.store.getSnapshot()
+    b.faults.models = new Error('fixture: model RPC timed out')
+    await expect(directory.load()).rejects.toThrow('model RPC timed out')
+    expect(directory.store.getSnapshot()).toMatchObject({ status: 'error', error: b.faults.models.message,
+      groups: previous.groups, current: previous.current })
+    delete b.faults.models
+    await directory.load()
+    expect(directory.store.getSnapshot().status).toBe('ready')
+    b.faults.select = new Error('fixture: selection disconnected')
+    const selection = { provider: 'deepseek-official', model: 'deepseek-v4-pro', reasoningEffort: 'off' }
+    await expect(directory.select(selection)).rejects.toThrow('selection disconnected')
+    expect(directory.store.getSnapshot()).toMatchObject({ status: 'error', error: b.faults.select.message,
+      current: previous.current })
+    delete b.faults.select
+    await directory.select(selection)
+    expect(directory.store.getSnapshot()).toMatchObject({ status: 'ready', error: null, current: selection })
+    await b.fiber.dispose()
+  })
   it('registers the /model contribution and the composer model seat', async () => {
     const b = await bench()
     expect(b.contribution().name).toBe('model')

@@ -12,6 +12,8 @@ Directories are per-session, resolved lazily through `ctx.modelDirectories.direc
 
 Every resident directory refetches directly on forwarded `llm/adapters-updated` and `settings/document-updated` owner events. Provider topology, provider catalogs, and the default selection therefore converge without the Host or client runtime deriving a separate model-change alias.
 
+Transport failures leave the loading/selecting state, retain the last accepted model and reasoning metadata, and expose the error for retry. Late failures after a newer operation or scope disposal cannot overwrite the current state.
+
 The `/client` exports are the plugin body (`apply`/`inject`), `ModelDirectoryResolver`, `ModelDirectory` with its state fields, and the seat's injected face type.
 
 ## Model Experience
