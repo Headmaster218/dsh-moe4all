@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { JsonBlock, MarkdownText, MessageText } from '@deepseek-ai/dsh-client-ui-primitives'
 import { cjkFriendlyStrong } from '../src/markdown/cjkFriendlyStrong.ts'
 import { mathCompatibility } from '../src/markdown/mathCompatibility.ts'
@@ -189,6 +189,19 @@ describe('MarkdownText', () => {
       <MarkdownText text={'`index.html`\n\nmore\n\n'} streaming fileMentions={fileMentions} />,
     )
     expect(streamed.container.querySelector('button')).toBeNull()
+  })
+
+  it('opens known local Markdown destinations through the file owner, not browser navigation', () => {
+    const open = vi.fn()
+    const fileMentions = { resolve: (value: string) => value === './out/game.html'
+      ? { open, label: 'Open game', title: 'out/game.html' } : undefined }
+    const view = render(<MarkdownText text={'[Game](./out/game.html) [Unknown](./missing.html) [Site](https://example.com)'} fileMentions={fileMentions} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Open game' }))
+    expect(open).toHaveBeenCalledTimes(1)
+    expect(view.container.querySelector('a[href="https://example.com"]')).not.toBeNull()
+    expect(screen.getByText('Unknown').closest('button,a')).toBeNull()
+    const streamed = render(<MarkdownText text={'[Game](./out/game.html)'} streaming fileMentions={fileMentions} />)
+    expect(streamed.container.querySelector('button,a')).toBeNull()
   })
 
   it('exposes the CJK strong syntax as a micromark extension needing CommonMark attention markers', () => {

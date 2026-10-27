@@ -412,6 +412,19 @@ describe('ProducedFiles row', () => {
 describe('producedFileMentions resolver', () => {
   const label = (path: string) => `打开 ${path}`
 
+  it('normalizes local destinations while retaining the exact recorded opener path', () => {
+    const opened: string[] = []
+    const resolver = producedFileMentions(['out/my report.html', 'D:\\Work\\game\\index.html'], path => { opened.push(path) }, label)
+    resolver.resolve('./out/my%20report.html')?.open()
+    resolver.resolve('file:///D:/Work/game/index.html')?.open()
+    resolver.resolve('d:/work/game/index.html')?.open()
+    resolver.resolve('INDEX.HTML')?.open()
+    expect(opened).toEqual(['out/my report.html', 'D:\\Work\\game\\index.html', 'D:\\Work\\game\\index.html', 'D:\\Work\\game\\index.html'])
+    for (const value of ['../out/my report.html', 'https://host/index.html', 'javascript:alert(1)', 'file://server/share/index.html', 'file:///D:/Work/other.html']) {
+      expect(resolver.resolve(value)).toBeUndefined()
+    }
+  })
+
   it('resolves exact paths and unique basenames; ambiguity and unknowns stay unresolved', () => {
     const opened: string[] = []
     const resolver = producedFileMentions(

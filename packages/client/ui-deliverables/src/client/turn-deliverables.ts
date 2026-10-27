@@ -150,10 +150,10 @@ export function basename(path: string): string {
 
 /**
  * File-mention vocabulary over one turn's produced paths, for the closing
- * message's prose: an inline-code token opens the file it names. A token
- * resolves by exact path, or by being exactly the basename of exactly one
+ * message's prose: inline code and Markdown destinations open a recorded file.
+ * A token resolves by normalized local path, or by being exactly the basename of exactly one
  * produced path — a basename two paths share stays inert rather than
- * guessing, so a mention link can never open the wrong file or 404.
+ * guessing. File existence and access are still checked when the file opens.
  * @param paths - The turn's produced paths (tool order, already deduped).
  * @param openFile - The chat view's file opener.
  * @param label - Localizes the accessible open-label for a resolved path.
@@ -167,15 +167,46 @@ export function producedFileMentions(
 ): MarkdownFileMentions {
   return {
     resolve(value) {
-      const path = paths.includes(value) ? value : onlyPathWithBasename(paths, value)
+      const normalized = mentionPath(value)
+      if (normalized === undefined) return undefined
+      const exact = paths.filter(path => mentionPath(path) === normalized)
+      const path = exact.length === 1 ? exact[0]
+        : exact.length === 0 && !normalized.includes('/') ? onlyPathWithBasename(paths, normalized) : undefined
       if (path === undefined) return undefined
       return { open: () => { openFile(path) }, label: label(path), title: path }
     },
   }
 }
 
+/** Normalize local link spelling without resolving parent traversal or authorizing new files. */
+function mentionPath(value: string): string | undefined {
+  let local = value
+  if (/^file:/i.test(local)) {
+    try {
+      const url = new URL(local)
+      if (url.host !== '' || url.search !== '' || url.hash !== '') return undefined
+      local = decodeURIComponent(url.pathname)
+      if (/^\/[a-z]:\//i.test(local)) local = local.slice(1)
+    } catch {
+      return undefined
+    }
+  } else {
+    // Markdown URI normalization can encode spaces; malformed escapes remain literal filenames.
+    try { local = decodeURIComponent(local) } catch { /* Keep an undecodable literal filename. */ }
+  }
+  local = local.replaceAll('\\', '/')
+  if (/^[a-z][a-z0-9+.-]*:/i.test(local) && !/^[a-z]:\//i.test(local)) return undefined
+  if (local.startsWith('//') || /[\u0000-\u001f]/.test(local) || local.split('/').includes('..')) return undefined
+  local = local.split('/').filter(segment => segment !== '.').join('/')
+  return /^[a-z]:\//i.test(local) ? local.toLowerCase() : local
+}
+
 /** The single produced path whose basename is exactly `value`, else undefined. */
 function onlyPathWithBasename(paths: readonly string[], value: string): string | undefined {
-  const matches = paths.filter(path => basename(path) === value)
+  const matches = paths.filter(path => {
+    const normalized = mentionPath(path)
+    if (normalized === undefined) return false
+    return basename(normalized) === (/^[a-z]:\//i.test(normalized) ? value.toLowerCase() : value)
+  })
   return matches.length === 1 ? matches[0] : undefined
 }
